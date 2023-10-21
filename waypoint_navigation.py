@@ -1,4 +1,6 @@
+
 #!/usr/bin/env python3
+
 '''
 Team ID: 2902
 Theme: Luminosity Drone

@@ -103,9 +103,6 @@ def pid():
         swift_drone.pitch_error_pub.publish(swift_drone.error[1])
         swift_drone.alt_error_pub.publish(swift_drone.error[2])   
 
-#arming the drone 
-swift_drone.arm()
-
 data_rate = rospy.Rate(30)                                                           #frequency of the data transfer in Hz
 while not rospy.is_shutdown():
     pid()                                                                            #calling the pid function

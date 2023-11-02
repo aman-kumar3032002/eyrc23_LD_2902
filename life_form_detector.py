@@ -38,6 +38,7 @@ import math
 import rospy
 import time
 import numpy as np
+from luminosity_drone.msg import Biolocation
 
 
 
@@ -52,8 +53,9 @@ class swift():
         # # [x_setpoint, y_setpoint, z_setpoint]
         # self.setpoint = [[0,0,0],[0,0,20],[7,0,20],[7,-7,20],[0,-7,20],[-7,-7,20],
         #                 [-7,0,20],[-7,7,20],[0,7,20],[7,7,20],[7,0,20],[0,0,20]]                                                           # whycon marker at the position of the dummy given in the scene. Make the whycon marker associated with position_to_hold dummy renderable and make changes accordingly
-        self.setpoint = [[0,0,0],[0,0,20],[-7,-7,20],
-                        ] 
+        self.setpoint = [[0,0,0],[0,0,20],[7,0,20],[7,-7,20],[0,-7,20],[-7,-7,20],
+                        [-7,0,20],[-7,7,20],[0,7,20],[7,7,20],[7,0,20],[0,0,20]]
+                        
         #Declaring a cmd of message type swift_msgs and initializing values
         self.cmd = swift_msgs()
         self.cmd.rcRoll = 1500
@@ -82,18 +84,28 @@ class swift():
         self.now = 0.00							   #varibale to store current time
         self.last_time = 0.0000					   #self.last_time = self.now
         self.time_change = 0.00					   #differnce between the current_time and last_time
-        
-
+        self.num_of_leds = 0
+        self.i = 0
         # # This is the sample time in which you need to run pid. Choose any time which you seem fit. Remember the stimulation step time is 50 ms
         self.sample_time = 0.033# in seconds
 
+        #Publishing on astrobiolocation topic
+        #the values are dummy, for checking the topic publication
+        self.alien = Biolocation()
+        self.alien.organism_type = "alian_a"
+        self.alien.whycon_x = 30
+        self.alien.whycon_y = 40
+        self.alien.whycon_z = 50
+        
         # Publishing /drone_command, /alt_error, /pitch_error, /roll_error
         self.command_pub = rospy.Publisher('/drone_command', swift_msgs, queue_size=1)
         #------------------------Add other ROS Publishers here-----------------------------------------------------
         self.alt_error_pub = rospy.Publisher('/alt_error',Float64, queue_size=1)    
         self.pitch_error_pub = rospy.Publisher('/pitch_error',Float64, queue_size=1)
         self.roll_error_pub = rospy.Publisher('/roll_error',Float64, queue_size=1)
-
+        
+        #publishing /astrobiolocation
+        self.astrobiolocation_pub = rospy.Publisher('/astrobiolocation',Biolocation,queue_size = 1)
         #-----------------------------------------------------------------------------------------------------------
         # Subscribing to /whycon/poses, /pid_tuning_altitude, /pid_tuning_pitch, pid_tuning_roll
         rospy.Subscriber('whycon/poses', PoseArray, self.whycon_callback)
@@ -102,7 +114,9 @@ class swift():
         rospy.Subscriber('/pid_tuning_altitude',PidTune,self.altitude_set_pid)
         rospy.Subscriber('/pid_tuning_pitch',PidTune,self.pitch_set_pid)
         rospy.Subscriber('/pid_tuning_roll',PidTune,self.roll_set_pid)
-        self.sub_img = rospy.Subscriber('/swift/camera_rgb/image_raw',Image,self.image_callback)
+        rospy.Subscriber('/swift/camera_rgb/image_raw',Image,self.image_callback)
+        # self.sub_img = rospy.Subscriber('/whycon/image_out',Image,self.image_callback)
+        
         #------------------------------------------------------------------------------------------------------------
 
         self.arm() # ARMING THE DRONE
@@ -170,9 +184,9 @@ class swift():
         if(self.time_change >self.sample_time):
             if(self.last_time !=0):
                 #error of all the cordinates(for proportional)				
-                self.error[0] = self.drone_position[0] - self.setpoint[i][0]   #for roll
-                self.error[1] = self.drone_position[1] - self.setpoint[i][1]   #for pitch
-                self.error[2] = self.drone_position[2] - self.setpoint[i][2]   #for throttl0
+                self.error[0] = self.drone_position[0] - self.setpoint[self.i][0]   #for roll
+                self.error[1] = self.drone_position[1] - self.setpoint[self.i][1]   #for pitch
+                self.error[2] = self.drone_position[2] - self.setpoint[self.i][2]   #for throttl0
 
                 #sum of errors (for integral)				
                 self.error_sum[2] = self.error_sum[2]+(self.error[2]*self.time_change)     #for throttle
@@ -219,76 +233,38 @@ class swift():
             self.alt_error_pub.publish(self.error[2])   
             self.pitch_error_pub.publish(self.error[1])
             self.roll_error_pub.publish(self.error[0])	
-
+            if(-0.2< swift_drone.error[0]<0.2 and -0.2< swift_drone.error[1]< 0.2 and -0.2< swift_drone.error[2]<0.2 and self.i < (len(swift_drone.setpoint)-1)):
+                self.i = self.i+1   
+    
     #------------------------------------------------------------------------------------------------------------------------
     def image_callback(self, img_msg):
         try:
             self.cv_image = self.bridge.imgmsg_to_cv2(img_msg,"passthrough")
+
+            grayscale_image = cv.cvtColor(self.cv_image,cv.COLOR_BGR2GRAY)
+            ret,thresh = cv.threshold(grayscale_image,225,255,0)
+            contours = cv.findContours(thresh,cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)[-2]
+            for c in contours:
+                    cv.drawContours(self.cv_image,[c],-1,(0,0,255),3)
+            cv.imshow("Image_window",self.cv_image)
+            cv.waitKey(1)
+            self.no_of_leds = len(contours)  
+            
         except CvBridgeError as e:
             print(e)
-            
-        
-            
-    # def show_image(img):
-    #     cv.imshow("Image_window",img)
-    #     cv.waitkey(3)
     
-    def org_detection(self):        
-        grayscale_image = cv.cvtColor(self.cv_image,cv.COLOR_BGR2GRAY)
-        blurred_image = cv.GaussianBlur(grayscale_image,(5,5),0)
-        threshold = cv.threshold(blurred_image, 225, 255, 0)[1]            #Thresholding 'blurred_image' with thresh value- 225,255,0 and storing it
-        threshold = cv.erode(threshold,None,iterations = 2)
-        threshold = cv.erode(threshold,None,iterations = 4)
-        labels = measure.label(threshold,background = 0)
-        mask = np.zeros(threshold.shape, dtype = "uint8")
-            
-        for label in np.unique(labels):
-            if label == 0:
-                continue
-            labelMask = np.zeros(threshold.shape,dtype="uint8")
-            labelMask[labels ==label] =255
-            numPixels = cv.countNonZero(labelMask)
-                
-            if numPixels>300:
-                mask =cv.add(mask, labelMask)
-                    
-        contours, _ = cv.findContours(mask.copy(),cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-        contours = sorted(contours, key = lambda c: cv.boundingRect(c)[0])
-        centroids = []
-        for i,contours in enumerate(contours):
-            points = cv.moments(contours)
-            centroid_X = float(points["m10"] / points["m00"]) 
-            centroid_Y = float(points["m01"] / points["m00"])
-            centroid = (centroid_X,centroid_Y)
-                
-            (x,y),radius = cv.minEnclosingCircle(contours)
-            radius = int(radius) 
-            center = (int(x),int(y))
-            area = math.pi * (radius**2)
-            cv.drawContours(self.cv_image,[contours],-1,(0,0,255),2)
-            cv.putText(self.cv_image,'+'+str(i+1),(center[0],center[1]-radius-10),cv.FONT_HERSHEY_COMPLEX,0.6,(0,0,255),2)
-            centroids.append(centroid)
-        # cv.namedWindow("preview")
-        # vc = self.cv_image
-        # rval, frame = vc.read()
-        # while rval:
-        #     cv.imshow("preview",frame)
-        #     rval,frame = vc.read()
-        #     key = cv.waitKey(20)
-        line = cv.line(img=blurred_image, pt1=(10, 10), pt2=(100, 10), color=(255, 0, 0), thickness=5, lineType=8, shift=0)
-        cv.imshow("Image_window",line)
-        cv.waitKey(3)      
-
-        
+    def orgainsm_type(self,i):
+        i = self.num_of_leds
+        if i > 2:
+            return(i)
+    
 if __name__ == '__main__':
 
     swift_drone = swift()
-    i = 0
     r = rospy.Rate(30) #specify rate in Hz based upon your desired PID sampling time, i.e. if desired sample time is 33ms specify rate as 30Hz
     while not rospy.is_shutdown():
         swift_drone.pid()
-        # swift_drone.image_callback()
-        swift_drone.org_detection()
-        if(-0.2< swift_drone.error[0]<0.2 and -0.2< swift_drone.error[1]< 0.2 and -0.2< swift_drone.error[2]<0.2 and i < (len(swift_drone.setpoint)-1)):
-            i = i+1
+       
+            # print(swift_drone.organsim_type)
+        # print(swift_drone.orgainsm_type(swift_drone.num_of_leds))
         r.sleep()

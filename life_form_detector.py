@@ -55,6 +55,9 @@ class swift():
         #                 [-7,0,20],[-7,7,20],[0,7,20],[7,7,20],[7,0,20],[0,0,20]]                                                           # whycon marker at the position of the dummy given in the scene. Make the whycon marker associated with position_to_hold dummy renderable and make changes accordingly
         self.setpoint = [[0,0,0],[0,0,20],[7,0,20],[7,-7,20],[0,-7,20],[-7,-7,20],
                         [-7,0,20],[-7,7,20],[0,7,20],[7,7,20],[7,0,20],[0,0,20]]
+        # self.setpoint = [[0,0,0],[0,0,20],[7,0,20],[7,-7,20],[0,-7,20],[-7,-7,20],
+        #                 [-7,0,20],[-7,7,20],[0,7,20],[7,7,20]]
+        # self.setpoint = [[0,0,0],[0,-7,20],[-7,-7,20]]
                         
         #Declaring a cmd of message type swift_msgs and initializing values
         self.cmd = swift_msgs()
@@ -90,6 +93,7 @@ class swift():
         self.sample_time = 0.033# in seconds
 
         #Publishing on astrobiolocation topic
+        
         #the values are dummy, for checking the topic publication
         self.alien = Biolocation()
         self.alien.organism_type = "alian_a"
@@ -239,16 +243,51 @@ class swift():
     #------------------------------------------------------------------------------------------------------------------------
     def image_callback(self, img_msg):
         try:
+            #get image from camera
             self.cv_image = self.bridge.imgmsg_to_cv2(img_msg,"passthrough")
 
             grayscale_image = cv.cvtColor(self.cv_image,cv.COLOR_BGR2GRAY)
             ret,thresh = cv.threshold(grayscale_image,225,255,0)
+            
+            
+            #print contours on received images
             contours = cv.findContours(thresh,cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)[-2]
-            for c in contours:
-                    cv.drawContours(self.cv_image,[c],-1,(0,0,255),3)
+            # for c in contours:
+            for c,contour in enumerate(contours):
+                points = cv.moments(contour)
+                (x,y),radius = cv.minEnclosingCircle(contour)
+                center = (int(x),int(y))
+                cv.drawContours(self.cv_image,[contour],-1,(0,0,255),3)
+                cv.putText(self.cv_image,'+'+str(c+1),(center[0],center[1]),cv.FONT_HERSHEY_COMPLEX
+                           ,0.6,(0,255,0),2)
+                a,b,c,d = cv.boundingRect(cv.drawContours(np.zeros_like(grayscale_image),contours,-1,1))
+                
+                cv.rectangle(self.cv_image,(a-4,b-4),(a+c+10,b+d+10),(0,0,255),2)
+                cv.putText(self.cv_image,'alien bsdwla',(a,b),cv.FONT_HERSHEY_COMPLEX,0.6,(255,0,0),2)
+                
+                                
+                # cv.rectangle(self.cv_image,(int(x),int(y)),(int(x)+10,int(y)+10),(255,0,0),1)
             cv.imshow("Image_window",self.cv_image)
             cv.waitKey(1)
             self.no_of_leds = len(contours)  
+            
+            # if (contours):
+                
+            # for c,contour in enumerate(contours):
+            #     contoursssss = cv.drawContours(np.zeros_like(grayscale_image),contours,-1,1)
+            #     a,b,c,d = cv.boundingRect(contoursssss)
+            #     points = cv.moments(contour)
+            #     (x,y),radius = cv.minEnclosingCircle(contour)
+            #     center = (int(x),int(y))
+            #     # cv.drawContours(self.cv_image,[contour],-1,(0,0,255),3)
+            #     cv.putText(self.cv_image,'+'+str(c+1),(center[0],center[1]),cv.FONT_HERSHEY_COMPLEX
+            #                ,0.6,(0,255,0),2)
+                
+            #     # cv.rectangle(self.cv_image,(int(x),int(y)),(int(x)+10,int(y)+10),(255,0,0),1)
+                
+            #     cv.rectangle = (self.cv_image,(a,b),(a+c,b+d),(0,0,255),3)
+            #     cv.imshow("Image ",self.cv_image)
+            #     cv.waitKey(1)
             
         except CvBridgeError as e:
             print(e)

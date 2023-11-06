@@ -10,6 +10,7 @@ imgray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 ret, thresh = cv.threshold(imgray, 225, 255, 0)
 contours, hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
 print("Number of LEDs = " + str(len(contours)))
+print(contours[1])
 
 #Drawing contours
 cv.drawContours(img, contours, -1, (0, 255, 0), 2, lineType= cv.LINE_AA)

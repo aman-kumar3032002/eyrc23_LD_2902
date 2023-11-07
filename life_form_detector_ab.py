@@ -51,10 +51,24 @@ class swift():
         self.bridge = CvBridge()
 
         # # [x_setpoint, y_setpoint, z_setpoint]
-        # self.setpoint = [[0,0,0],[0,0,20],[7,0,20],[7,-7,20],[0,-7,20],[-7,-7,20],
-        #                 [-7,0,20],[-7,7,20],[0,7,20],[7,7,20],[7,0,20],[0,0,20]]                                                           # whycon marker at the position of the dummy given in the scene. Make the whycon marker associated with position_to_hold dummy renderable and make changes accordingly
-        self.setpoint = [[0,0,0],[0,0,20],[7,0,20],[7,-7,20],[0,-7,20],[-7,-7,20],
-                        [-7,0,20],[-7,7,20],[0,7,20],[7,7,20],[7,0,20],[0,0,20]]
+
+        # self.setpoint = [[0,0,0],[0,0,30],
+        #                 [3,0,30],[3,3,30],[-3,3,30],[-3,-3,30],[0,-3,30],
+        #                 [5,-3,30],[5,0,30],[5,5,30],[0,5,30],[-5,5,30],[-5,0,30],[-5,-5,30],[0,-5,30],
+        #                 [7,-5,30],[7,0,30],[7,7,30],[0,7,30],[-7,7,30],[-7,0,30],[-7,-7,30],[0,-7,30],
+        #                 [10,10,35],[11,11,37]]  
+           
+        self.setpoint = [[0,0,0],[0,0,30],
+                        [2,0,30],[2,2,30],[-2,2,30],[-2,-2,30],[0,-2,30],
+                        [5,-2,30],[5,0,30],[5,5,30],[0,5,30],[-5,5,30],[-5,0,30],[-5,-5,30],[0,-5,30],
+                        [7,-5,30],[7,0,30],[7,7,30],[0,7,30],[-7,7,30],[-7,0,30],[-7,-7,30],[0,-7,30],
+                        [7,7,30],[11,11,37.5],[11,11,37]]   
+        
+        # self.setpoint = [[0,0,0],[0,0,30],
+        #                 [2,0,30],[11,11,37]]                  
+        #                 ]   # whycon marker at the position of the dummy given in the scene. Make the whycon marker associated with position_to_hold dummy renderable and make changes accordingly
+        # self.setpoint =  [[0,0,0],[0,0,23],
+        #                  [3,0,23],[6,0,23],[9,0,23]]                                                  
                         
         #Declaring a cmd of message type swift_msgs and initializing values
         self.cmd = swift_msgs()
@@ -84,20 +98,21 @@ class swift():
         self.now = 0.00							   #varibale to store current time
         self.last_time = 0.0000					   #self.last_time = self.now
         self.time_change = 0.00					   #differnce between the current_time and last_time
-        self.num_of_leds = 0
-        self.i = 0
+        
         # # This is the sample time in which you need to run pid. Choose any time which you seem fit. Remember the stimulation step time is 50 ms
         self.sample_time = 0.033# in seconds
 
         #Publishing on astrobiolocation topic
-        
         #the values are dummy, for checking the topic publication
         self.alien = Biolocation()
-        self.alien.organism_type = "alian_a"
-        self.alien.whycon_x = 30
-        self.alien.whycon_y = 40
-        self.alien.whycon_z = 50
+        self.alien.organism_type = " "
+
         
+        self.count = 0
+        self.num_of_leds = 0
+        
+        self.i = 0
+        self.centroid = []
         # Publishing /drone_command, /alt_error, /pitch_error, /roll_error
         self.command_pub = rospy.Publisher('/drone_command', swift_msgs, queue_size=1)
         #------------------------Add other ROS Publishers here-----------------------------------------------------
@@ -187,8 +202,11 @@ class swift():
                 #error of all the cordinates(for proportional)				
                 self.error[0] = self.drone_position[0] - self.setpoint[self.i][0]   #for roll
                 self.error[1] = self.drone_position[1] - self.setpoint[self.i][1]   #for pitch
-                self.error[2] = self.drone_position[2] - self.setpoint[self.i][2]   #for throttl0
-
+                self.error[2] = self.drone_position[2] - self.setpoint[self.i][2]   #for throttl
+                self.alien.whycon_x = self.drone_position[0]
+                self.alien.whycon_y = self.drone_position[1]
+                self.alien.whycon_z = self.drone_position[2]
+                
                 #sum of errors (for integral)				
                 self.error_sum[2] = self.error_sum[2]+(self.error[2]*self.time_change)     #for throttle
 
@@ -234,38 +252,51 @@ class swift():
             self.alt_error_pub.publish(self.error[2])   
             self.pitch_error_pub.publish(self.error[1])
             self.roll_error_pub.publish(self.error[0])	
+            
             if(-0.2< swift_drone.error[0]<0.2 and -0.2< swift_drone.error[1]< 0.2 and -0.2< swift_drone.error[2]<0.2 and self.i < (len(swift_drone.setpoint)-1)):
-                self.i = self.i+1   
+                self.i = self.i+1  
+                
     
     #------------------------------------------------------------------------------------------------------------------------
     def image_callback(self, img_msg):
-        try:
-            self.cv_image = self.bridge.imgmsg_to_cv2(img_msg,"passthrough")
+        self.cv_image = self.bridge.imgmsg_to_cv2(img_msg,"passthrough")
 
-            grayscale_image = cv.cvtColor(self.cv_image,cv.COLOR_BGR2GRAY)
-            ret,thresh = cv.threshold(grayscale_image,225,255,0)
-            contours = cv.findContours(thresh,cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)[-2]
-            for c in contours:
-                    cv.drawContours(self.cv_image,[c],-1,(0,0,255),3)
-            cv.imshow("Image_window",self.cv_image)
-            cv.waitKey(1)
-            self.no_of_leds = len(contours)  
-            
-        except CvBridgeError as e:
-            print(e)
-    
-    def orgainsm_type(self,i):
-        i = self.num_of_leds
-        if i > 2:
-            return(i)
+        grayscale_image = cv.cvtColor(self.cv_image,cv.COLOR_BGR2GRAY)
+        blurred_image = cv.GaussianBlur(grayscale_image, (5, 5), 0) 
+        threshold = cv.threshold(blurred_image, 225, 255, 0)[1] 
+        contours = cv.findContours(threshold,cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)[-2]      
+        for c,contour in enumerate(contours):
+                points = cv.moments(contour)
+                (x,y) ,radius = cv.minEnclosingCircle(contour)
+                center = (int(x),int(y))
+                cv.drawContours(self.cv_image,[contour],-1,(0,0,255),3)
+                cv.putText(self.cv_image,'+'+str(c+1),(center[0],center[1]),cv.FONT_HERSHEY_COMPLEX
+                           ,0.6,(0,255,0),2)
+                a,b,c,d = cv.boundingRect(cv.drawContours(np.zeros_like(grayscale_image),contours,-1,1))
+                
+                cv.rectangle(self.cv_image,(a-4,b-4),(a+c+10,b+d+10),(0,0,255),2)                
+        if len(contours) == 3:
+            self.alien.organism_type = "alien_b"
+        elif len(contours) ==2:
+            self.alien.organism_type = "alien_a"
+        elif len(contours) == 4:
+            self.alien.organism_type = "alien_c"
+        
     
 if __name__ == '__main__':
 
     swift_drone = swift()
     r = rospy.Rate(30) #specify rate in Hz based upon your desired PID sampling time, i.e. if desired sample time is 33ms specify rate as 30Hz
     while not rospy.is_shutdown():
-        swift_drone.pid()
-       
-            # print(swift_drone.organsim_type)
-        # print(swift_drone.orgainsm_type(swift_drone.num_of_leds))
-        r.sleep()
+        if(swift_drone.i < (len(swift_drone.setpoint)-1)):
+            swift_drone.pid()
+        elif(-0.2< swift_drone.error[0]<0.2 and -0.2< swift_drone.error[1]< 0.2 and -0.2< swift_drone.error[2]<0.2 and swift_drone.i == (len(swift_drone.setpoint)-1)):
+            swift_drone.disarm()
+            
+        if(swift_drone.alien.organism_type =="alien_b" and swift_drone.count <1):
+            while swift_drone.astrobiolocation_pub.get_num_connections() <1:
+                r.sleep(1)               
+            swift_drone.astrobiolocation_pub.publish(swift_drone.alien) 
+            swift_drone.count = swift_drone.count + 1                
+        r.sleep() 
+    

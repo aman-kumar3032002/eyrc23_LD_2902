@@ -1,0 +1,3 @@
+Organism Type : alien_c
+Number of Contours : 4
+Centroid : []

@@ -134,8 +134,8 @@ class Detection():
     
          # Looping over the contours
          for i, contour in enumerate(self.clusters):
-            file.write(f"Organism Type : {self.organisms_type[i]}\n")
-            file.write(f"Centroid : {self.centroids[i]}\n\n")     
+            file.write(f"Organism Type: {self.organisms_type[i]}\n")
+            file.write(f"Centroid: {self.centroids[i]}\n\n")     
             
               
       #Saving the image         

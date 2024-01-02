@@ -7,7 +7,7 @@
 # Global variables: self.organism_type_map = {}, self.centroids = [], self.organisms_type = [], self.threshold_area, 
 '''
 
-# import the necessary packages
+# importing the necessary packages
 from imutils import contours
 from skimage import measure
 from sklearn.cluster import KMeans
@@ -25,10 +25,10 @@ class Detection():
             3 : "alien_b",
             4 : "alien_c",
             5 : "alien_d"
-      }
-      self.centroids = []        
-      self.organisms_type = []
-      self.threshold_area = 50
+      }                                                                            #self.organism_type_map: dictonary to stores all the names of the organism as value and led count as their key
+      self.centroids = []        						   #self.centroids: list to store the centroids of the organisms 
+      self.organisms_type = []                                                     #self.organism_type: list to store the type of organism detected by the algorithm
+      self.threshold_area = 50                                                     #self.threshold_area: led cluster area threshold 
 
    def call_image(self):
       parser = argparse.ArgumentParser()

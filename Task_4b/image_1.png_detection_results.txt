@@ -1,3 +1,0 @@
-Organism Type : alien_d
-Centroid : (354.52423084822345, 244.857662764428)
-

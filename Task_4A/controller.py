@@ -4,12 +4,10 @@
 Controller for the drone
 """
 
-
-
 # standard imports
 import copy
 import time
-
+import rospy
 
 # third-party imports
 import scipy.signal
@@ -21,47 +19,64 @@ from geometry_msgs.msg import PoseArray
 from pid_msg.msg import PidTune
 from swift_msgs.msg import PIDError, RCMessage
 from swift_msgs.srv import CommandBool
+from std_msgs.msg import Float64
+
 
 MAX_SUM_ERROR = 100
-
 
 MAX_ROLL = 1600
 BASE_ROLL = 1500
 MIN_ROLL = 1450
 SUM_ERROR_ROLL_LIMIT = 3000
 
-
 # Similarly, create upper and lower limits, base value, and max sum error values for roll and pitch
+MAX_PITCH = 1600
+BASE_PITCH = 1500
+MIN_PITCH = 1450
+SUM_ERROR_PITCH_LIMIT = 3000
 
+MAX_YAW = 1600
+BASE_YAW = 1500
+MIN_YAW = 1450
+SUM_ERROR_YAW_LIMIT = 3000
 
+MAX_THROTTLE = 1600
+BASE_THROTTLE = 1000
+MIN_THROTTLE = 1450
+SUM_ERROR_THROTTLE_LIMIT = 3000
 
 
 PID_OUTPUT_VALUES = [[], [], []] # This will be used to store data for filtering purpose
 
 class DroneController():
     def __init__(self,node):
-        self.node= node
-        
+        self.node= node       
         self.rc_message = RCMessage()
         self.drone_whycon_pose_array = PoseArray()
         self.is_flying = False
         self.last_whycon_pose_received_at = None
         self.commandbool = CommandBool.Request()
 
-        self.set_points = [0, 0, 0]         # Setpoints for x, y, z respectively      
+        self.set_points = [0, 0, 22]         # Setpoints for x, y, z respectively      
         
-        self.error      = [0, 0, 0]         # Error for roll, pitch and throttle        # Create variables for previous error and sum_error
-        self.integral = [0.0,0.0,0.0]       # Iterm for roll pitch and throtle
+        self.error      = [0.0, 0.0, 0.0]         # Error for roll, pitch and throttle        # Create variables for previous error and sum_error
+        self.prev_error = [0.0,0.0,0.0]
+        self.error_sum = [0.0,0.0,0.0]			   #varibale to store the sum of the errors
+        self.error_diff = [0.0,0.0,0.0]			   #varibale to store the difference of the errore
 
-        # Create variables for previous error and sum_error
+        self.integral   = [0.0,0.0,0.0]       # Iterm for roll pitch and throtle
 
 
+        self.now = 0.00							   #varibale to store current time
+        self.last_time = 0.0000					   #self.last_time = self.now
+        self.time_change = 0.00					   #differnce between the current_time and last_time
 
         self.Kp = [ 0 * 0.01  ,  0 * 0.01  ,  0 * 0.01  ]
         # Create variables for Kd and Ki similarly
+        self.Kd = [ 0 * 0.01  ,  0 * 0.01  ,  0 * 0.01  ]
+        self.Ki = [ 0 * 0.01  ,  0 * 0.01  ,  0 * 0.01  ]
 
-        # Create subscriber for WhyCon 
-        
+        # Create subscriber for WhyCon         
         self.whycon_sub = node.create_subscription(PoseArray,"/whycon/poses",self.whycon_poses_callback,1)
         
         # Similarly create subscribers for pid_tuning_altitude, pid_tuning_roll, pid_tuning_pitch and any other subscriber if required

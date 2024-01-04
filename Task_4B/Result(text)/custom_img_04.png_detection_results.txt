@@ -1,0 +1,9 @@
+Organism Type: alien_c
+Centroid: (173.2411450752062, 342.5319665107828)
+
+Organism Type: alien_b
+Centroid: (503.8040098199673, 332.59033460629206)
+
+Organism Type: alien_a
+Centroid: (462.16660357518396, 93.25080967402734)
+

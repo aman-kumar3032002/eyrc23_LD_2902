@@ -18,7 +18,12 @@ import argparse
 class Detection():
 
    def __init__(self):
-      # Declare all variables here 
+      '''
+      Purpose:
+      ---
+      To initializes all various variables here.
+
+      '''
 
       self.organism_type_map = {
             2 : "alien_a",
@@ -26,18 +31,18 @@ class Detection():
             4 : "alien_c",
             5 : "alien_d"
       }                                                                            #self.organism_type_map: dictonary to stores all the names of the organism as value and led count as their key
-      self.centroids = []        						   #self.centroids: list to store the centroids of the organisms 
+      self.centroids = []        						                                #self.centroids: list to store the centroids of the organisms 
       self.organisms_type = []                                                     #self.organism_type: list to store the type of organism detected by the algorithm
-      self.threshold_area = 50                                                     #self.threshold_area: led cluster area threshold 
+      self.threshold_area = 50                                                     #self.threshold_area: store max threshold area to form cluster 
 
    def call_image(self):
-      parser = argparse.ArgumentParser()
-      parser.add_argument('--image', help = 'Enter Image File Name')
-      args = parser.parse_args()
+      parser = argparse.ArgumentParser()                                           #parser: Intializes the Parser argument  
+      parser.add_argument('--image', help = 'Enter Image File Name')               #Adding parser argument named --image and help text.
+      args = parser.parse_args()                                                   #args: Parse command-line arguments using the argparse module
 
-      self.image_path = args.image
+      self.image_path = args.image                                                 #self.image_path: Storing the image path using command line 
 
-      self.image = cv2.imread(self.image_path,1)
+      self.image = cv2.imread(self.image_path,1)                                   #self.image: Reading image using CV.imread function
 
    def preprocess_image(self):
       grayscale_image = cv2.cvtColor(self.image,cv2.COLOR_BGR2GRAY)                 #Converting 'image' to grayscale and storing it 
@@ -72,33 +77,39 @@ class Detection():
 
 
    def detect_contours(self):
-      self.contours, heirarchy = cv2.findContours(self.threshold, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE) #Finding Contours 
-      self.contours = sorted(self.contours, key=lambda c: cv2.boundingRect(c)[0])                             #Sorting Contours based on x-coordinates
-      cv2.drawContours(self.image,self.contours,-1,(0,0,255),2)
+      self.contours, heirarchy = cv2.findContours(self.threshold, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)     #Finding Contours 
+      self.contours = sorted(self.contours, key=lambda c: cv2.boundingRect(c)[0])                             #Sorting Contours based on x-coordinates(left to right)
+      cv2.drawContours(self.image,self.contours,-1,(0,0,255),2)                                               #Drawing boundary around detected contours
 
    def detect_cluster(self):
-      grouped_contours = [contour for contour in self.contours if cv2.contourArea(contour) > self.threshold_area]
+      grouped_contours = [self.contour for self.contour in self.contours if cv2.contourArea(self.contour) > self.threshold_area]  #grouped_contours: grouping the number of contours according to contour area
+      contour_centers = np.array([[(center_x + width) / 2, (center_y + height) / 2] for center_x, center_y, width, height in [cv2.boundingRect(contour) for contour in grouped_contours]])  #contour_centers: Calculating centers of grouped contours using bounding rect method
+      print(cv2.contourArea(self.contour))
 
-      contour_centers = np.array([[(center_x + width) / 2, (center_y + height) / 2] for center_x, center_y, width, height in [cv2.boundingRect(contour) for contour in grouped_contours]])
+      # Determine the number of clusters according to threshold area and number of contours
+      if cv2.contourArea(self.contour) > self.threshold_area :
+         if len(self.contours) > 13 :
+             num_clusters = 4
+         elif len(self.contours) > 8 and len(self.contours) < 13 :
+            num_clusters = 3 
+         elif len(self.contours) > 5 and len(self.contours) < 10 :
+            num_clusters = 2 
+         else:num_clusters = 1
 
-      if len(self.contours) > 7:
-          num_clusters = 4
-      else:num_clusters = 1
-
+      
+      #Apply KMeans Clustering
       kmeans = KMeans(n_clusters = num_clusters)
-
       kmeans.fit(contour_centers)
-
       labels = kmeans.labels_
 
+      #Group contours based on the KMeans labels
       self.clusters = {i: [] for i in range(num_clusters)}
-
       for i, contour in enumerate(grouped_contours):
          self.clusters[labels[i]].append(contour)
 
+      self.grouped_image = self.image.copy()           #self.grouped_image: Storing a copy of image
 
-      self.grouped_image = self.image.copy()
-
+      #looping over num_clusters
       for i in range(num_clusters):
          if len(self.clusters[i]) > 0:
             # Combine all contours in the cluster
@@ -110,8 +121,7 @@ class Detection():
             # Get the bounding rectangle for the convex hull
             point_x, point_y, width, height = cv2.boundingRect(convex_hull)
            
-            
-            # Draw the bounding rectangle
+            # Draw the bounding rectangle for each clusters
             cv2.rectangle(self.grouped_image, (point_x, point_y), (point_x + width, point_y + height), (0, 255, 0), 2)
                                 
             points = cv2.moments(convex_hull)                               #storing moments in points
@@ -120,11 +130,12 @@ class Detection():
                                      #["m00"] -- represnts Total Area of Object
                                      #["m10"] -- Gives center of mass in X-Axis
                                      #["m01"] -- Gives center of mass in Y-Axis
-            centroid = (centroid_X,centroid_Y) 
-            self.centroids.append(centroid) 
-            self.number_of_contours = len(self.clusters[i]) 
-            organism = self.organism_type_map.get(self.number_of_contours, "unknown")
-            self.organisms_type.append(organism)
+            centroid = (centroid_X,centroid_Y)                              #centroid: tupple to store X and Y coordinates of convex_hull
+            self.centroids.append(centroid)                                 #self.centroids: Appending the X and Y coordinates to list
+            
+            self.number_of_contours = len(self.clusters[i])                 #self.number_of_contours: Store the number of contours and the corresponding organism type
+            organism = self.organism_type_map.get(self.number_of_contours, "unknown")   
+            self.organisms_type.append(organism)                            #self.organisms_type: Store the type of different organisms
 
 
    def write_data(self):
@@ -145,6 +156,8 @@ class Detection():
       file.close()                                                                       
 
 if __name__ == '__main__' :
+
+   #calling the functions here
 
    detection = Detection()
    detection.call_image()

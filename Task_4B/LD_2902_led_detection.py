@@ -64,7 +64,10 @@ class Detection():
         call_image()
       """
       parser = argparse.ArgumentParser()                                           #parser: Intializes the Parser argument  
-      parser.add_argument('--image', help = 'Enter Image File Name')               #Adding parser argument named --image and help text.
+      
+      #Adding parser argument named --image and help text.
+      parser.add_argument('--image', help = 'Enter Image File Name')     
+                
       args = parser.parse_args()                                                   #args: Parse command-line arguments using the argparse module
       #reading the path of the image --------------------------------------------
       self.image_path = args.image                                                 #self.image_path: Storing the image path using command line 
@@ -90,7 +93,7 @@ class Detection():
       """
       grayscale_image = cv2.cvtColor(self.image,cv2.COLOR_BGR2GRAY)                 #Converting 'image' to grayscale and storing it 
       blurred_image = cv2.GaussianBlur(grayscale_image, (5, 5), 0)                  #Blurring 'grayscale_image' using gaussianblur and storing it in blurred_image varible
-   # threshold the image to reveal light regions in the blurred image-----------------------------------------------------------------
+   # threshold the image to reveal light regions in the blurred image------------------------------------------------------------------
       self.threshold = cv2.threshold(blurred_image, 225, 255, 0)[1]                 #Thresholding 'blurred_image' with thresh value- 225,255,0 and storing it
 
    # perform a series of erosions and dilations to remove any small blobs of noise from the thresholded image--------------------------
@@ -140,10 +143,10 @@ class Detection():
         -------------------------------------------
         detect_cluster()
       """
-      grouped_contours = [self.contour for self.contour in self.contours if cv2.contourArea(self.contour) > self.threshold_area]  #grouped_contours: grouping the number of contours according to contour area
+      grouped_contours = [self.contour for self.contour in self.contours if cv2.contourArea(self.contour) > self.threshold_area]                                                            #grouped_contours: grouping the number of contours according to contour area
       contour_centers = np.array([[(center_x + width) / 2, (center_y + height) / 2] for center_x, center_y, width, height in [cv2.boundingRect(contour) for contour in grouped_contours]])  #contour_centers: Calculating centers of grouped contours using bounding rect method
       
-      # Determine the number of clusters according to threshold area and number of contours
+      # Determine the number of clusters according to threshold area and number of detected contours
       if cv2.contourArea(self.contour) > self.threshold_area :
          if len(self.contours) > 13 :
              num_clusters = 4
@@ -154,20 +157,21 @@ class Detection():
          else:num_clusters = 1
 
       
-      #Apply KMeans Clustering
-      kmeans = KMeans(n_clusters = num_clusters)
+      #Apply KMeans Clustering-----------------------------------------------------------------------------------
+      kmeans = KMeans(n_clusters = num_clusters,n_init= "auto")
       kmeans.fit(contour_centers)                       #Fitting contours centers to Kmenas labels
       labels = kmeans.labels_
 
-      #Group contours based on the KMeans labels
+      #Group contours based on the KMeans labels-----------------------------------------------------------------
       self.clusters = {i: [] for i in range(num_clusters)}
+      
       #looping over grouped contours
       for i, contour in enumerate(grouped_contours):
          self.clusters[labels[i]].append(contour)
 
       self.grouped_image = self.image.copy()           #self.grouped_image: Storing a copy of image
 
-      #looping over num_clusters
+      #looping over num_clusters----------------------------------------------------------------------------------
       for i in range(num_clusters):
          if len(self.clusters[i]) > 0:
             # Combine all contours in the cluster
@@ -177,9 +181,9 @@ class Detection():
             convex_hull = cv2.convexHull(combined_contour)
             
             # Get the bounding rectangle for the convex hull
-            point_x, point_y, width, height = cv2.boundingRect(convex_hull)
+            point_x, point_y, width, height = cv2.boundingRect(convex_hull)        
            
-            # Draw the bounding rectangle for each clusters
+            # Drawing the bounding rectangle for each clusters
             cv2.rectangle(self.grouped_image, (point_x, point_y), (point_x + width, point_y + height), (0, 255, 0), 2)
                                 
             points = cv2.moments(convex_hull)                               #storing moments in points
@@ -232,11 +236,18 @@ class Detection():
 
 if __name__ == '__main__' :
 
-   #call functions here
-
-   detection = Detection()
+   detection = Detection()    #detection: object of  the Detection Class
+   #reading images using image parser---------------------------
    detection.call_image()
+   
+   #preprocessing the images to remove noise--------------------
    detection.preprocess_image()
+   
+   #detecting countour in the processed image-------------------
    detection.detect_contours()
+   
+   #detecting clusters -----------------------------------------
    detection.detect_cluster()
+   
+   #writing data in a file--------------------------------------
    detection.write_data()

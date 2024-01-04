@@ -4,7 +4,7 @@
 # Author List:      Manila Raj Putra, Aman Kumar, Harsh Gulzar, Shivam Kumar
 # Filename:         LD_2902_led_detection.py
 # Functions:        __init__(), call_image(), preprocess_image(), detect_contours(), detect_cluster(), write_data()
-# Global variables: self.organism_type_map = {}, self.centroids = [], self.organisms_type = [], self.threshold_area, 
+# Global variables: None
 '''
 
 # importing the necessary packages
@@ -96,27 +96,6 @@ class Detection():
    # perform a series of erosions and dilations to remove any small blobs of noise from the thresholded image--------------------------
       self.threshold = cv2.erode(self.threshold, None, iterations=2)                #Performing erosion with 2 iterations
       self.threshold = cv2.dilate(self.threshold, None, iterations=4)               #Performing dilations with 4 iterations
-
-   # perform a connected component analysis on the thresholded image, then initialize a mask to store only the "large" components-------
-      labels = measure.label(self.threshold,  background=0)                         #Performing connected component analysis 
-      mask = np.zeros(self.threshold.shape, dtype="uint8")                          #Initializing an empty mask value with same threshold shape
-
-   #  loop over the unique components----------------------------------------------------------------------------------------------------
-      for label in np.unique(labels):
-
-	   # if this is the background label, ignore it
-         if label == 0:                                                            #If label is 0 , continue
-              continue
-
-	   # otherwise, construct the label mask and count the number of pixels 
-      labelMask = np.zeros(self.threshold.shape, dtype="uint8")                    #Initializing an empty label mask with same threshold
-      labelMask[labels == label] = 255                                             #Setting Current pixel level to 255
-      numPixels = cv2.countNonZero(labelMask)                                      #Counting Non Zero pixels in label mask 
-    
-	   # if the number of pixels in the component is sufficiently large, then add it to our mask of "large blobs"
-      # if numPixels > 100:
-      self.mask = cv2.add(mask, labelMask) 
-      self.image_pass = self.mask.copy()
 
 
    def detect_contours(self):

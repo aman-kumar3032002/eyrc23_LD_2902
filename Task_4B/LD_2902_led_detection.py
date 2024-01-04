@@ -18,13 +18,23 @@ import argparse
 class Detection():
 
    def __init__(self):
-      '''
-      Purpose:
-      ---
-      To initializes all various variables here.
-
-      '''
-
+      """
+        Purpose:
+        -------------------------------------------
+        Initilizing the newly created object.
+    
+        Input Arguments:
+        -------------------------------------------
+        self
+    
+        Returns:
+        -------------------------------------------
+        None
+    
+        Example Call:
+        -------------------------------------------
+        
+      """ 
       self.organism_type_map = {
             2 : "alien_a",
             3 : "alien_b",
@@ -36,29 +46,62 @@ class Detection():
       self.threshold_area = 50                                                     #self.threshold_area: store max threshold area to form cluster 
 
    def call_image(self):
+      """
+        Purpose:
+        -------------------------------------------
+        Function to read the images using argument parser
+    
+        Input Arguments:
+        -------------------------------------------
+        self
+    
+        Returns:
+        -------------------------------------------
+        None
+    
+        Example Call:
+        -------------------------------------------
+        call_image()
+      """
       parser = argparse.ArgumentParser()                                           #parser: Intializes the Parser argument  
       parser.add_argument('--image', help = 'Enter Image File Name')               #Adding parser argument named --image and help text.
       args = parser.parse_args()                                                   #args: Parse command-line arguments using the argparse module
-
+      #reading the path of the image --------------------------------------------
       self.image_path = args.image                                                 #self.image_path: Storing the image path using command line 
-
       self.image = cv2.imread(self.image_path,1)                                   #self.image: Reading image using CV.imread function
 
    def preprocess_image(self):
+      """
+        Purpose:
+        -------------------------------------------
+        Applies filter to remove noise from the images
+    
+        Input Arguments:
+        -------------------------------------------
+        self
+    
+        Returns:
+        -------------------------------------------
+        None
+    
+        Example Call:
+        -------------------------------------------
+        preprocess_image()
+      """
       grayscale_image = cv2.cvtColor(self.image,cv2.COLOR_BGR2GRAY)                 #Converting 'image' to grayscale and storing it 
       blurred_image = cv2.GaussianBlur(grayscale_image, (5, 5), 0)                  #Blurring 'grayscale_image' using gaussianblur and storing it in blurred_image varible
-      # threshold the image to reveal light regions in the blurred image
+   # threshold the image to reveal light regions in the blurred image-----------------------------------------------------------------
       self.threshold = cv2.threshold(blurred_image, 225, 255, 0)[1]                 #Thresholding 'blurred_image' with thresh value- 225,255,0 and storing it
 
-      # perform a series of erosions and dilations to remove any small blobs of noise from the thresholded image
+   # perform a series of erosions and dilations to remove any small blobs of noise from the thresholded image--------------------------
       self.threshold = cv2.erode(self.threshold, None, iterations=2)                #Performing erosion with 2 iterations
       self.threshold = cv2.dilate(self.threshold, None, iterations=4)               #Performing dilations with 4 iterations
 
-      # perform a connected component analysis on the thresholded image, then initialize a mask to store only the "large" components
+   # perform a connected component analysis on the thresholded image, then initialize a mask to store only the "large" components-------
       labels = measure.label(self.threshold,  background=0)                         #Performing connected component analysis 
       mask = np.zeros(self.threshold.shape, dtype="uint8")                          #Initializing an empty mask value with same threshold shape
 
-      #  loop over the unique components
+   #  loop over the unique components----------------------------------------------------------------------------------------------------
       for label in np.unique(labels):
 
 	   # if this is the background label, ignore it
@@ -77,15 +120,50 @@ class Detection():
 
 
    def detect_contours(self):
-      self.contours, heirarchy = cv2.findContours(self.threshold, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)     #Finding Contours 
-      self.contours = sorted(self.contours, key=lambda c: cv2.boundingRect(c)[0])                             #Sorting Contours based on x-coordinates(left to right)
-      cv2.drawContours(self.image,self.contours,-1,(0,0,255),2)                                               #Drawing boundary around detected contours
+      """
+        Purpose:
+        -------------------------------------------
+        Detects the conoturs using OpenCV
+    
+        Input Arguments:
+        -------------------------------------------
+        self
+    
+        Returns:
+        -------------------------------------------
+        None
+    
+        Example Call:
+        -------------------------------------------
+        detect_contours()
+      """
+      self.contours, heirarchy = cv2.findContours(self.threshold, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)     #self.contours: Finding Contours 
+      #Sorting Contours based on x-coordinates(left to right)-------------------------------------------------
+      self.contours = sorted(self.contours, key=lambda c: cv2.boundingRect(c)[0])    
+      #Drawing boundary around detected contours--------------------------------------------------------------                         
+      cv2.drawContours(self.image,self.contours,-1,(0,0,255),2)                                               
 
    def detect_cluster(self):
+      """
+        Purpose:
+        -------------------------------------------
+        Detects the Led Clusters 
+    
+        Input Arguments:
+        -------------------------------------------
+        self
+    
+        Returns:
+        -------------------------------------------
+        None
+    
+        Example Call:
+        -------------------------------------------
+        detect_cluster()
+      """
       grouped_contours = [self.contour for self.contour in self.contours if cv2.contourArea(self.contour) > self.threshold_area]  #grouped_contours: grouping the number of contours according to contour area
       contour_centers = np.array([[(center_x + width) / 2, (center_y + height) / 2] for center_x, center_y, width, height in [cv2.boundingRect(contour) for contour in grouped_contours]])  #contour_centers: Calculating centers of grouped contours using bounding rect method
-      print(cv2.contourArea(self.contour))
-
+      
       # Determine the number of clusters according to threshold area and number of contours
       if cv2.contourArea(self.contour) > self.threshold_area :
          if len(self.contours) > 13 :
@@ -99,11 +177,12 @@ class Detection():
       
       #Apply KMeans Clustering
       kmeans = KMeans(n_clusters = num_clusters)
-      kmeans.fit(contour_centers)
+      kmeans.fit(contour_centers)                       #Fitting contours centers to Kmenas labels
       labels = kmeans.labels_
 
       #Group contours based on the KMeans labels
       self.clusters = {i: [] for i in range(num_clusters)}
+      #looping over grouped contours
       for i, contour in enumerate(grouped_contours):
          self.clusters[labels[i]].append(contour)
 
@@ -139,25 +218,42 @@ class Detection():
 
 
    def write_data(self):
-
-      #Open a text file for writing
-      with open(f"{self.image_path}_detection_results.txt", "w") as file:                
+      """
+        Purpose:
+        -------------------------------------------
+        Writing data in the format of an image and text
     
-         # Looping over the contours
+        Input Arguments:
+        -------------------------------------------
+        self
+    
+        Returns:
+        -------------------------------------------
+        None
+    
+        Example Call:
+        -------------------------------------------
+        Run when we have to write the result data in text and image format
+      """
+
+      #-----------------Opening a text file for writing image data------------------------
+      with open(f"{self.image_path}_detection_results.txt", "w") as file:                
+         #------------------------Looping over the contours-------------------------------
          for i, contour in enumerate(self.clusters):
+             #----------------------writing the organism type-----------------------------
             file.write(f"Organism Type: {self.organisms_type[i]}\n")
+             #-------------writing the centroid of the organism cluster-------------------                
             file.write(f"Centroid: {self.centroids[i]}\n\n")     
-            
-              
-      #Saving the image         
+                      
+         #----------Saving the image with name, imageName_detection_result.png------------   
       cv2.imwrite(f"{self.image_path}_detection_results.png", self.grouped_image)        
                         
-      # Close the text file
-      file.close()                                                                       
+         #--------------------------Closing the text file---------------------------------
+      file.close()                                                                      
 
 if __name__ == '__main__' :
 
-   #calling the functions here
+   #call functions here
 
    detection = Detection()
    detection.call_image()

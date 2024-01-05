@@ -58,12 +58,12 @@ class DroneController():
         service_endpoint = "/swift/cmd/arming"
 
         self.arming_service_client = self.node.create_client(CommandBool,service_endpoint)
-        
-        self.set_points = [0, 0, 22]                                                                                            #self.set_points: list of setpoints, for x, y, z respectively                     
-        self.error      = [0.0, 0.0, 0.0]                                                                                       #self.error: list, of error for roll, pitch and throttle respectively  
-        self.prev_error = [0.0, 0.0, 0.0]                                                                                       #self.prev_error: list to store the previous errors
-        self.error_diff = [0.0, 0.0, 0.0]                                                                                       #self.error_diff: list to store the error difference
-        self.error_sum  = [0.0, 0.0, 0.0]                                                                                       #self.error_sum: list to store the sum of the errors
+        self.drone_position = [0.0, 0.0, 0.0]                                                                                   #self.drone_postion: stores the current position of the drone
+        self.set_points = [0, 0, 22]                                                                                            #self.set_points   : list of setpoints, for x, y, z respectively                     
+        self.error      = [0.0, 0.0, 0.0]                                                                                       #self.error        : list, of error for roll, pitch and throttle respectively  
+        self.prev_error = [0.0, 0.0, 0.0]                                                                                       #self.prev_error   : list to store the previous errors
+        self.error_diff = [0.0, 0.0, 0.0]                                                                                       #self.error_diff   : list to store the error difference
+        self.error_sum  = [0.0, 0.0, 0.0]                                                                                       #self.error_sum    : list to store the sum of the errors
 
         #pid variables---------------------------------------------------------------------------------------------------------------------------------------------------------
         self.Kp = [ 0 * 0.01  , 0 * 0.01  , 0 * 0.01  ]
@@ -72,10 +72,10 @@ class DroneController():
         #----------------------------------------------------------------------------------------------------------------------------------------------------------------------
         
         #----------------------------------------------------------------Subscribers-------------------------------------------------------------------------------------------
-        self.whycon_sub = node.create_subscription(PoseArray,"/whycon/poses",self.whycon_poses_callback,1)                      #self.whycon_sub: subscriber for the whycon 
-        self.pid_roll   = node.create_subscription(PidTune,"/pid_tuning_altitude",self.pid_tune_roll_callback,1)                #self.pid_roll: subscriber for roll axis
-        self.pid_pitch  = node.create_subscription(PidTune,"/pid_tuning_altitude",self.pid_tune_pitch_callback,1)               #self.pid_pitch: subscriber for pitch axis
-        self.pid_alt    = node.create_subscription(PidTune,"/pid_tuning_altitude",self.pid_tune_throttle_callback,1)            #self.pid_alt: subscriber for the alt axis
+        self.whycon_sub = node.create_subscription(PoseArray,"/whycon/poses",self.whycon_poses_callback,1)                      #self.whycon_sub : subscriber for the whycon 
+        self.pid_roll   = node.create_subscription(PidTune,"/pid_tuning_altitude",self.pid_tune_roll_callback,1)                #self.pid_roll   : subscriber for roll axis
+        self.pid_pitch  = node.create_subscription(PidTune,"/pid_tuning_altitude",self.pid_tune_pitch_callback,1)               #self.pid_pitch  : subscriber for pitch axis
+        self.pid_alt    = node.create_subscription(PidTune,"/pid_tuning_altitude",self.pid_tune_throttle_callback,1)            #self.pid_alt    : subscriber for the alt axis
         
         #----------------------------------------------------------------------------------------------------------------------------------------------------------------------
                 
@@ -91,6 +91,9 @@ class DroneController():
     def whycon_poses_callback(self, msg):
         self.last_whycon_pose_received_at = self.node.get_clock().now().seconds_nanoseconds()[0]
         self.drone_whycon_pose_array = msg
+        self.drone_position[0] =self.drone_whycon_pose_array.poses[0].position.x
+        self.drone_position[1] =self.drone_whycon_pose_array.poses[0].position.y
+        self.drone_position[2] =self.drone_whycon_pose_array.poses[0].position.z
 
     def pid_tune_roll_callback(self, msg):
         self.Kp[0] = msg.kp * 0.01
@@ -107,15 +110,33 @@ class DroneController():
         self.Ki[2] = msg.ki * 0.0001
         self.Kd[2] = msg.kd * 0.1
 
-    def pid(self):          # PID algorithm
+    def pid(self):        
+        # try:
+        #     self.error[0] = self.drone_position[0] - self.set_points[0] 
+        #     self.error[1] = self.drone_position[1] - self.set_points[1] 
+        #     self.error[2] = self.drone_position[2] - self.set_points[2] 
 
-        # 0 : calculating Error, Derivative, Integral for Roll error : x axis
-        try:
-            self.error[0] = self.drone_whycon_pose_array.poses[0].position.x - self.set_points[0] 
-        # Similarly calculate error for y and z axes 
-        
-        except:
-            pass
+        #     self.error_sum[0] = self.error_sum[0] + self.error[0]
+        #     self.error_sum[1] = self.error_sum[1] + self.error[1]
+        #     self.error_sum[2] = self.error_sum[2] + self.error[2]
+
+        #     self.error_diff[0] = self.error[0] - self.prev_error[0]
+        #     self.error_diff[1] = self.error[1] - self.prev_error[1]
+        #     self.error_diff[2] = self.error[2] - self.prev_error[2]           
+        # except:
+        #     pass
+            
+        self.error[0] = self.drone_position[0] - self.set_points[0] 
+        self.error[1] = self.drone_position[1] - self.set_points[1] 
+        self.error[2] = self.drone_position[2] - self.set_points[2] 
+
+        self.error_sum[0] = self.error_sum[0] + self.error[0]
+        self.error_sum[1] = self.error_sum[1] + self.error[1]
+        self.error_sum[2] = self.error_sum[2] + self.error[2]
+
+        self.error_diff[0] = self.error[0] - self.prev_error[0]
+        self.error_diff[1] = self.error[1] - self.prev_error[1]
+        self.error_diff[2] = self.error[2] - self.prev_error[2] 
 
         # Calculate derivative and intergral errors. Apply anti windup on integral error (You can use your own method for anti windup, an example is shown here)
 
@@ -140,11 +161,8 @@ class DroneController():
 
         self.publish_data_to_rpi( roll = 1500, pitch = 1500, throttle = 1000)
 
-        #Replace the roll pitch and throttle values as calculated by PID 
-        
-        
+        #Replace the roll pitch and throttle values as calculated by PID         
         # Publish alt error, roll error, pitch error for plotjuggler debugging
-
         self.pid_error_pub.publish(
             PIDError(
                 roll_error=float(self.error[0]),

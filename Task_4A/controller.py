@@ -256,8 +256,10 @@ class DroneController():
     # Function to disarm the drone 
 
     def disarm(self):
-
-        # Create the disarm function
+        self.node.get_logger().info("Calling disarm service")
+        self.commandbool.value = False
+        self.future = self.arming_service_client.call_async(self.commandbool)
+        
 
         pass
 

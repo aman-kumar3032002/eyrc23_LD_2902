@@ -246,10 +246,6 @@ class DroneController():
         self.commandbool.value = False
         self.future = self.arming_service_client.call_async(self.commandbool)
         
-
-        pass
-
-
 def main(args=None):
     rclpy.init(args=args)
 

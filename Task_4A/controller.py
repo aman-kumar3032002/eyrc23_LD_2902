@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-
 """
 Controller for the drone
 """
-
 # standard imports
 import copy
 import time
@@ -35,15 +33,12 @@ BASE_THROTTLE = 1500
 MAX_THROTTLE = 2000
 SUM_ERROR_THROTTLE_LIMIT = 100
 
-MIN_YAW = 1500
+MIN_YAW = 1490
 BASE_YAW = 1500
-MAX_YAW = 1500
+MAX_YAW = 1510
 SUM_ERROR_YAW_LIMIT = 100
 
-
 DRONE_WHYCON_POSE = [[], [], []]
-
-# Similarly, create upper and lower limits, base value, and max sum error values for roll and pitch
 
 class DroneController():
     def __init__(self,node):
@@ -82,8 +77,8 @@ class DroneController():
         
         #Creating publisher for publishing errors for plotting in plotjuggler--------------------------------------------------------------------------------------------------       
         self.pid_error_pub       = node.create_publisher(PIDError, "/luminosity_drone/pid_error",1)                             #self.pid_error_pub: publisher for pid error   
-        self.pid_roll_error_pub  = node.create_publisher(Float64,"/alt_error",1)                                                #self.pid_error_pub: publisher for roll error 
-        self.pid_pitch_error_pub = node.create_publisher(Float64,"/alt_error",1)                                                #self.pid_error_pub: publisher for pitch error 
+        self.pid_roll_error_pub  = node.create_publisher(Float64,"/roll_error",1)                                                #self.pid_error_pub: publisher for roll error 
+        self.pid_pitch_error_pub = node.create_publisher(Float64,"/pitch_error",1)                                                #self.pid_error_pub: publisher for pitch error 
         self.pid_alt_error_pub   = node.create_publisher(Float64,"/alt_error",1)                                                #self.pid_error_pub: publisher for alt error 
                
     def whycon_poses_callback(self, msg):
@@ -95,60 +90,50 @@ class DroneController():
         self.drone_position[2] =self.drone_whycon_pose_array.poses[0].position.z
 
     def pid_tune_roll_callback(self, msg):
-        self.Kp[0] = msg.kp * 0.01
-        self.Ki[0] = msg.ki * 0.0001
-        self.Kd[0] = msg.kd * 0.1
+        self.Kp[0] = msg.kp * 0.3
+        self.Ki[0] = msg.ki * 0.000
+        self.Kd[0] = msg.kd * 6
         
     def pid_tune_pitch_callback(self, msg):
-        self.Kp[1] = msg.kp * 0.01
-        self.Ki[1] = msg.ki * 0.0001
-        self.Kd[1] = msg.kd * 0.1
+        self.Kp[1] = msg.kp * 0.3
+        self.Ki[1] = msg.ki * 0.0
+        self.Kd[1] = msg.kd * 6
         
     def pid_tune_throttle_callback(self, msg):
-        self.Kp[2] = msg.kp * 0.01
-        self.Ki[2] = msg.ki * 0.0001
-        self.Kd[2] = msg.kd * 0.1
+        self.Kp[2] = msg.kp * 0.4
+        self.Ki[2] = msg.ki * 0.00018
+        self.Kd[2] = msg.kd * 6
 
     def pid(self):        
-        # try:
-        #     self.error[0] = self.drone_position[0] - self.set_points[0] 
-        #     self.error[1] = self.drone_position[1] - self.set_points[1] 
-        #     self.error[2] = self.drone_position[2] - self.set_points[2] 
-
-        #     self.error_sum[0] = self.error_sum[0] + self.error[0]
-        #     self.error_sum[1] = self.error_sum[1] + self.error[1]
-        #     self.error_sum[2] = self.error_sum[2] + self.error[2]
-
-        #     self.error_diff[0] = self.error[0] - self.prev_error[0]
-        #     self.error_diff[1] = self.error[1] - self.prev_error[1]
-        #     self.error_diff[2] = self.error[2] - self.prev_error[2]           
-        # except:
-        #     pass
-            
+        try:
         #error of all the cordinates(for proportional)-------------------   
-        self.error[0] = self.drone_position[0] - self.set_points[0] 
+            self.error[0] = self.drone_position[0] - self.set_points[0]               
+        except Exception as e:
+            self.node.get_logger().info(e)
+            
+        
         self.error[1] = self.drone_position[1] - self.set_points[1] 
         self.error[2] = self.drone_position[2] - self.set_points[2] 
 
-        #error of all the cordinates(integral)---------------------------
+                #error of all the cordinates(integral)---------------------------
         self.error_sum[0] = self.error_sum[0] + self.error[0]
         self.error_sum[1] = self.error_sum[1] + self.error[1]
         self.error_sum[2] = self.error_sum[2] + self.error[2]
-        
-        if self.integral[0] > SUM_ERROR_ROLL_LIMIT:
-            self.integral[0] = SUM_ERROR_ROLL_LIMIT
-        if self.integral[0] < -SUM_ERROR_ROLL_LIMIT:
-            self.integral[0] = -SUM_ERROR_ROLL_LIMIT
+                
+        if self.error_sum[0] > SUM_ERROR_ROLL_LIMIT:
+            self.error_sum[0] = SUM_ERROR_ROLL_LIMIT
+        if self.error_sum[0] < -SUM_ERROR_ROLL_LIMIT:
+            self.error_sum[0] = -SUM_ERROR_ROLL_LIMIT
 
-        if self.integral[1] > SUM_ERROR_PITCH_LIMIT:
-            self.integral[1] = SUM_ERROR_PITCH_LIMIT
-        if self.integral[1] < -SUM_ERROR_PITCH_LIMIT:
-            self.integral[1] = -SUM_ERROR_PITCH_LIMIT
+        if self.error_sum[1] > SUM_ERROR_PITCH_LIMIT:
+            self.error_sum[1] = SUM_ERROR_PITCH_LIMIT
+        if self.error_sum[1] < -SUM_ERROR_PITCH_LIMIT:
+            self.error_sum[1] = -SUM_ERROR_PITCH_LIMIT
 
-        if self.integral[2] > SUM_ERROR_THROTTLE_LIMIT:
-            self.integral[2] = SUM_ERROR_THROTTLE_LIMIT
-        if self.integral[2] < -SUM_ERROR_THROTTLE_LIMIT:
-            self.integral[2] = -SUM_ERROR_THROTTLE_LIMIT
+        if self.error_sum[2] > SUM_ERROR_THROTTLE_LIMIT:
+            self.error_sum[2] = SUM_ERROR_THROTTLE_LIMIT
+        if self.error_sum[2] < -SUM_ERROR_THROTTLE_LIMIT:
+            self.error_sum[2] = -SUM_ERROR_THROTTLE_LIMIT
 
         #error of all the cordinates(derivative)-------------------------
         self.error_diff[0] = self.error[0] - self.prev_error[0]
@@ -160,17 +145,11 @@ class DroneController():
         self.prev_error[1] = self.error[1]
         self.prev_error[2] = self.error[2]
 
-        # 1 : calculating Error, Derivative, Integral for Pitch error : y axis
-
-        # 2 : calculating Error, Derivative, Integral for Alt error : z axis
-
-
         # Write the PID equations and calculate the self.rc_message.rc_throttle, self.rc_message.rc_roll, self.rc_message.rc_pitch
         self.rc_message.rc_roll     = BASE_ROLL - int((self.Kp[0]*self.error[0])+(self.Kd[0]*self.error_diff[0]))		#roll 
         self.rc_message.rc_pitch    = BASE_PITCH +int((self.Kp[1]*self.error[1])+(self.Kd[1]*self.error_diff[1]))		#pitch
-        self.rc_message.rc_throttle = BASE_THROTTLE + int((self.Kp[2]*self.error[2])+ (self.Kd[2]*self.error_diff[2])+(self.error_sum[2]*self.Ki[2])) #throttle
-   
-        
+        self.rc_message.rc_throttle = BASE_THROTTLE + int((self.Kp[2]*self.error[2])+ (self.Kd[2]*self.error_diff[2])+(self.error_sum[2]*self.Ki[2])) #throttle  
+                 
     #------------------------------------------------------------------------------------------------------------------------
 
 
@@ -184,8 +163,15 @@ class DroneController():
                 throttle_error=float(self.error[2]),
                 yaw_error=-0.0,
                 zero_error=0.0,
+                
             )
         )
+        self.pid_roll_error_pub.publish(self.error[0])
+        self.pid_pitch_error_pub.publish(self.error[1])
+        self.pid_alt_error_pub.publish(self.error[2])
+        
+        
+        
 
 
     def publish_data_to_rpi(self, roll, pitch, throttle):

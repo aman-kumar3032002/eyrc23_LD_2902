@@ -183,27 +183,27 @@ class DroneController():
         # Send constant 1500 to rc_message.rc_yaw
         self.rc_message.rc_yaw = int(BASE_YAW)
 
-        # BUTTERWORTH FILTER
-        # span = 15
-        # for index, val in enumerate([roll, pitch, throttle]):
-        #     DRONE_WHYCON_POSE[index].append(val)
-        #     if len(DRONE_WHYCON_POSE[index]) == span:
-        #         DRONE_WHYCON_POSE[index].pop(0)
-        #     if len(DRONE_WHYCON_POSE[index]) != span-1:
-        #         return
-        #     order = 3
-        #     fs = 60
-        #     fc = 5
-        #     nyq = 0.5 * fs
-        #     wc = fc / nyq
-        #     b, a = scipy.signal.butter(N=order, Wn=wc, btype='lowpass', analog=False, output='ba')
-        #     filtered_signal = scipy.signal.lfilter(b, a, DRONE_WHYCON_POSE[index])
-        #     if index == 0:
-        #         self.rc_message.rc_roll = int(filtered_signal[-1])
-        #     elif index == 1:
-        #         self.rc_message.rc_pitch = int(filtered_signal[-1])
-        #     elif index == 2:
-        #         self.rc_message.rc_throttle = int(filtered_signal[-1])
+        # BUTTERWORTH FILTER 
+        span = 15                    # filter to remove noise signals
+        for index, val in enumerate([roll, pitch, throttle]):       
+            DRONE_WHYCON_POSE[index].append(val)
+            if len(DRONE_WHYCON_POSE[index]) == span:
+                DRONE_WHYCON_POSE[index].pop(0)
+            if len(DRONE_WHYCON_POSE[index]) != span-1:
+                return
+            order = 3
+            fs = 60
+            fc = 5
+            nyq = 0.5 * fs
+            wc = fc / nyq
+            b, a = scipy.signal.butter(N=order, Wn=wc, btype='lowpass', analog=False, output='ba')
+            filtered_signal = scipy.signal.lfilter(b, a, DRONE_WHYCON_POSE[index])
+            if index == 0:
+                self.rc_message.rc_roll = int(filtered_signal[-1])
+            elif index == 1:
+                self.rc_message.rc_pitch = int(filtered_signal[-1])
+            elif index == 2:
+                self.rc_message.rc_throttle = int(filtered_signal[-1])
 
         if self.rc_message.rc_roll > MAX_ROLL:     #checking range i.e. bet 1000 and 2000
             self.rc_message.rc_roll = MAX_ROLL
@@ -242,10 +242,10 @@ class DroneController():
     # Function to disarm the drone 
 
     def disarm(self):
+        self.node.get_logger().info("Calling arm service")
+        self.commandbool.value = False
+        self.future = self.arming_service_client.call_async(self.commandbool)
 
-        # Create the disarm function
-
-        pass
 
 
 def main(args=None):

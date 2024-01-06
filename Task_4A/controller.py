@@ -242,12 +242,10 @@ class DroneController():
     # Function to disarm the drone 
 
     def disarm(self):
-        self.node.get_logger().info("Calling arm service")
+        self.node.get_logger().info("Calling disarm service")
         self.commandbool.value = False
         self.future = self.arming_service_client.call_async(self.commandbool)
-
-
-
+        
 def main(args=None):
     rclpy.init(args=args)
 

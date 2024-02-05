@@ -108,14 +108,13 @@ class DroneController():
         try:
         #error of all the cordinates(for proportional)-------------------   
             self.error[0] = self.drone_position[0] - self.set_points[0]               
+            self.error[1] = self.drone_position[1] - self.set_points[1] 
+            self.error[2] = self.drone_position[2] - self.set_points[2] 
         except Exception as e:
             self.node.get_logger().info(e)
             
         
-        self.error[1] = self.drone_position[1] - self.set_points[1] 
-        self.error[2] = self.drone_position[2] - self.set_points[2] 
-
-                #error of all the cordinates(integral)---------------------------
+           #error of all the cordinates(integral)---------------------------
         self.error_sum[0] = self.error_sum[0] + self.error[0]
         self.error_sum[1] = self.error_sum[1] + self.error[1]
         self.error_sum[2] = self.error_sum[2] + self.error[2]
@@ -136,18 +135,17 @@ class DroneController():
             self.error_sum[2] = -SUM_ERROR_THROTTLE_LIMIT
 
         #error of all the cordinates(derivative)-------------------------
-        self.error_diff[0] = self.error[0] - self.prev_error[0]
-        self.error_diff[1] = self.error[1] - self.prev_error[1]
-        self.error_diff[2] = self.error[2] - self.prev_error[2] 
-
-        #saving current error in previous error------------------------
+        self.error_diff[0] = self.prev_error[0] - self.error[0]
+        self.error_diff[1] = self.prev_error[1] - self.error[1]
+        self.error_diff[2] = self.prev_error[2] - self.error[2] 
+        #saving current error in previous error----------------------
         self.prev_error[0] = self.error[0]
         self.prev_error[1] = self.error[1]
         self.prev_error[2] = self.error[2]
 
         # Write the PID equations and calculate the self.rc_message.rc_throttle, self.rc_message.rc_roll, self.rc_message.rc_pitch
         self.rc_message.rc_roll     = BASE_ROLL - int((self.Kp[0]*self.error[0])+(self.Kd[0]*self.error_diff[0]))		#roll 
-        self.rc_message.rc_pitch    = BASE_PITCH +int((self.Kp[1]*self.error[1])+(self.Kd[1]*self.error_diff[1]))		#pitch
+        self.rc_message.rc_pitch    = BASE_PITCH + int((self.Kp[1]*self.error[1])+(self.Kd[1]*self.error_diff[1]))		#pitch
         self.rc_message.rc_throttle = BASE_THROTTLE + int((self.Kp[2]*self.error[2])+ (self.Kd[2]*self.error_diff[2])+(self.error_sum[2]*self.Ki[2])) #throttle  
                  
     #------------------------------------------------------------------------------------------------------------------------

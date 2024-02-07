@@ -20,12 +20,15 @@ import time
 import scipy.signal
 import numpy as np
 import rclpy
+import cv2 as cv
 from rclpy.node import Node
 from rclpy.clock import Clock
 from geometry_msgs.msg import PoseArray
 from pid_msg.msg import PidTune
 from swift_msgs.msg import PIDError, RCMessage
 from swift_msgs.srv import CommandBool
+from cv_bridge import CvBridge
+from sensor_msgs.msg import Image
 
 
 # battery voltage 12.5 - 12 v
@@ -60,8 +63,9 @@ DRONE_WHYCON_POSE = [[], [], []]
 
 class DroneController():
     def __init__(self,node):
-        self.node= node
+        self.node = node
         
+        self.cvBridge = CvBridge()
         self.rc_message = RCMessage()                                                                                           #self.rc_message                   : object of the the RCMessage class
         self.drone_whycon_pose_array = PoseArray()                                                                              #self.drone_whycon_pose_array      : object of the PoseArray class
         self.last_whycon_pose_received_at = 0                                                                                   #self.last_whycon_poses_received_at: stores the last_whycon_pose_received location
@@ -96,10 +100,17 @@ class DroneController():
         #subscriber for pid_alt-------------------------------------------------------------------------------------
         self.pid_alt    = node.create_subscription(PidTune,"/pid_tuning_throttle",self.pid_tune_throttle_callback,1)            #self.pid_alt    : subscriber for the alt axis
 
+        #subscriber for Rpi Camera----------------------------------------------------------------------------------
+        # node = rclpy.create_node('camera_subscriber')
+        subscriber = node.create_subscription(CvBridge, "/rpi_camera/image_raw", self.image_callback)
+        # rclpy.spin(node)
+
         #Publisher for publishing errors for plotting in plotjuggler------------------------------------------------        
         self.pid_error_pub = node.create_publisher(PIDError, "/luminosity_drone/pid_error",1)                                   #self.pid_error_pub: publisher to publish pid_error    
         self.rc_pub = node.create_publisher(RCMessage, "/swift/rc_command",1)                                                   #self.rc_pub: publisher to publish rc_command
 
+
+        
     def whycon_poses_callback(self, msg):
         self.last_whycon_pose_received_at = self.node.get_clock().now().seconds_nanoseconds()[0]
         self.drone_whycon_pose_array = msg
@@ -122,6 +133,57 @@ class DroneController():
         self.Kp[2] = msg.kp * 0.01
         self.Ki[2] = msg.ki * 0.0001
         self.Kd[2] = msg.kd * 0.1
+
+    def image_callback(self, img_msg):
+        
+        # cv_image = bridge.imgmsg_to_cv2(img_msg, desired_encoding="passthrough")
+        # # Process the image using OpenCV
+        # cv2.imshow("Raspberry Pi Camera", cv_image)
+        # cv2.waitKey(1)
+        self.cv_image = self.bridge.imgmsg_to_cv2(img_msg,"passthrough")                        #converting the ros images to openc cv images
+
+        grayscale_image = cv.cvtColor(self.cv_image,cv.COLOR_BGR2GRAY)                          #grayscaling the images
+        blurred_image = cv.GaussianBlur(grayscale_image, (5, 5), 0)                             #blurring the images
+        threshold = cv.threshold(blurred_image, 225, 255, 0)[1] 
+        self.contours = cv.findContours(threshold,cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)[-2]      
+        for c,contour in enumerate(self.contours):
+            # (frame_centre_x,frame_centre_y),radius = cv.minEnclosingCircle(contour)
+            # center = (int(frame_centre_x),int(frame_centre_y))
+            cv.drawContours(self.cv_image,[contour],-1,(0,0,255),3)   
+            a,b,c,d = cv.boundingRect(cv.drawContours(np.zeros_like(grayscale_image),self.contours,-1,1))
+            cv.rectangle(self.cv_image,(a-4,b-4),(a+c+10,b+d+10),(0,0,255),2)                  #drawing a recatangle around the countours(organisms)
+            contour_X = (a+c/2)/100                                                            #contour_x , stores the x coordinate of the contour, (divided by 100 to get a sigle digit value)
+            contour_Y = (b+d/2)/100                                                            #contour_y , stores the y coordinate of the contour, (divided by 100 to get a sigle digit value)
+            self.organism_centroids= [contour_X,contour_Y]                                     #storing the organism centroid
+        
+
+    def orgainsm_type(self,number_of_contours):
+        """
+    Purpose:
+    -------------------------------------------
+    converts the number of contours to the type of organism
+    
+    Input Arguments:
+    -------------------------------------------
+    number of contours
+    
+    Returns:
+    -------------------------------------------
+    type of organism(string)
+    
+    Example Call:
+    -------------------------------------------
+    organism_type(len(num_of_contours))
+        """
+        if number_of_contours ==2:
+            self.alien.organism_type = "alien_a"
+        elif number_of_contours == 3:
+            self.alien.organism_type = "alien_b"
+        elif number_of_contours == 4:
+            self.alien.organism_type = "alien_c"             
+        return self.alien.organism_type
+            
+
     
     def drone_landing(self):
         

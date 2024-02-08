@@ -1,7 +1,7 @@
 '''
 # Team ID:          2902
 # Theme:            Luminosity Drone
-# Author List:      Aman Kumar, Shivam Kumar, Manila Raj Putra, Harsh Gulzar, 
+# Author List:      Aman Kumar, Shivam Kumar, Manila Raj Putra, Harsh Gulzar
 # Filename:         LD_2902_waypoint_controller.py
 # Functions:        __init__,whycon_poses_callback(),pid_tune_roll_callback(),pid_tune_pitch_callback(),pid_tune_throttle_callback(),pid(),publish_data_to_rpi,shutdown_hook(),arm(),disarm(),main()
 # Global variables: MIN_ROLL,BASE_ROLL,MAX_ROLL,SUM_ERROR_ROLL_LIMIT,MIN_ROLL_PITCH,BASE_PITCH,MAX_PITCH, SUM_ERROR_PITCH_LIMIT, MIN_THROTTLE,BASE_THROTTLE,MAX_THROTTLE,SUM_ERROR_THROTTLE_LIMIT,BASE_YAW

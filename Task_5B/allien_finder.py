@@ -100,10 +100,9 @@ class DroneController():
         #subscriber for pid_alt-------------------------------------------------------------------------------------
         self.pid_alt    = node.create_subscription(PidTune,"/pid_tuning_throttle",self.pid_tune_throttle_callback,1)            #self.pid_alt    : subscriber for the alt axis
 
-        #subscriber for Rpi Camera----------------------------------------------------------------------------------
-        # node = rclpy.create_node('camera_subscriber')
-        subscriber = node.create_subscription(CvBridge, "/rpi_camera/image_raw", self.image_callback)
-        # rclpy.spin(node)
+        #subscriber for Rpi ---------
+        self.alien_finder = node.create_subscription(Image, "/video_frames", self.image_callback,10)
+        
 
         #Publisher for publishing errors for plotting in plotjuggler------------------------------------------------        
         self.pid_error_pub = node.create_publisher(PIDError, "/luminosity_drone/pid_error",1)                                   #self.pid_error_pub: publisher to publish pid_error    

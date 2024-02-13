@@ -1,26 +1,19 @@
+#!/usr/bin/env python3
 '''
 # Team ID:          2902
 # Theme:            Luminosity Drone
-# Author List:      Aman Kumar, Shivam Kumar, Manila Raj Putra, Harsh Gulzar, 
-# Filename:         LD_2902_waypoint_controller.py
-# Functions:        __init__,whycon_poses_callback(),pid_tune_roll_callback(),pid_tune_pitch_callback(),pid_tune_throttle_callback(),pid(),publish_data_to_rpi,shutdown_hook(),arm(),disarm(),main()
+# Author List:      Aman Kumar, Shivam Kumar, Manila Raj Putra, Harsh Gulzar 
+# Filename:         LD_2902_alien_finder.py
+# Functions:        __init__,whycon_poses_callback(),pid_tune_roll_callback(),pid_tune_pitch_callback(),pid_tune_throttle_callback(),pid(),publish_data_to_rpi,shutdown_hook(),arm(),disarm(),main(),image_callback(),organism_type()
 # Global variables: MIN_ROLL,BASE_ROLL,MAX_ROLL,SUM_ERROR_ROLL_LIMIT,MIN_ROLL_PITCH,BASE_PITCH,MAX_PITCH, SUM_ERROR_PITCH_LIMIT, MIN_THROTTLE,BASE_THROTTLE,MAX_THROTTLE,SUM_ERROR_THROTTLE_LIMIT,BASE_YAW
 '''
-
-#!/usr/bin/env python3
-"""
-Controller for the drone
-"""
-
 # standard imports
 import copy
 import time
-
 # third-party imports
 import scipy.signal
 import numpy as np
 import rclpy
-import cv2 as cv
 from rclpy.node import Node
 from rclpy.clock import Clock
 from geometry_msgs.msg import PoseArray
@@ -29,95 +22,112 @@ from swift_msgs.msg import PIDError, RCMessage
 from swift_msgs.srv import CommandBool
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
+import cv2 as cv
+from swift_msgs.msg import *
+from loc_msg.msg import Biolocation
 
 
-# battery voltage 12.5 - 12 v
 #global variable for roll ----------------------------------------------------------------------------------------------
-MIN_ROLL = 1400                       
-BASE_ROLL = 1487
-# BASE_ROLL = [1488,0,0]
-MAX_ROLL = 1600
-SUM_ERROR_ROLL_LIMIT =100
+MIN_ROLL = 1420                    
+BASE_ROLL = 1490
+MAX_ROLL = 1700
+SUM_ERROR_ROLL_LIMIT =1000
 
 #gloabal vaiables for pitch---------------------------------------------------------------------------------------------
-MIN_PITCH = 1400 
-BASE_PITCH = 1490
-# BASE_PITCH =[1490,0,0]
-MAX_PITCH = 1600
-SUM_ERROR_PITCH_LIMIT = 100
+MIN_PITCH = 1420
+BASE_PITCH = 1480
+MAX_PITCH = 1700
+SUM_ERROR_PITCH_LIMIT = 1000
 
 #gloabal vaiable for throttle-------------------------------------------------------------------------------------------
 MIN_THROTTLE = 1400
 BASE_THROTTLE = 1453
-# BASE_THROTTLE = [1453,0,0]
 MAX_THROTTLE= 1550
-SUM_ERROR_THROTTLE_LIMIT = 80000
+SUM_ERROR_THROTTLE_LIMIT = 8000
 
 #gloabal variable for yaw-----------------------------------------------------------------------------------------------
-MIN_YAW= 1000
+MIN_YAW= 1500
 BASE_YAW = 1500
-MAX_YAW = 2000
+MAX_YAW = 1500
 SUM_ERROR_ROLL_LIMIT = 400
 #-----------------------------------------------------------------------------------------------------------------------
 DRONE_WHYCON_POSE = [[], [], []]
 
-class DroneController():
+class DroneController(Node):
     def __init__(self,node):
-        self.node = node
-        
-        self.cvBridge = CvBridge()
+        self.node= node        
         self.rc_message = RCMessage()                                                                                           #self.rc_message                   : object of the the RCMessage class
         self.drone_whycon_pose_array = PoseArray()                                                                              #self.drone_whycon_pose_array      : object of the PoseArray class
         self.last_whycon_pose_received_at = 0                                                                                   #self.last_whycon_poses_received_at: stores the last_whycon_pose_received location
         self.commandbool = CommandBool.Request()                                                                                #self.commandbool                  : object of the CommandBool.Request class
         service_endpoint = "/swift/cmd/arming"
         self.arming_service_client = self.node.create_client(CommandBool,service_endpoint)
-        
-        #the set point at index 4 and 5 ie , [0,0,26] and [0,0,27] are given for landing purposes-------------------------------
-        self.set_points = [[0,0,23],[2,3,23],[-1,2,25],[-3,-3,25],[0,0,26],[0,0,27]]                                            # Setpoints for x, y, z respectively      
+        self.bridge =  CvBridge()
+  
+        self.set_points = [[3.6, 6.6,22],[-0.3, 6.5,22],[-3.7, 6.5,22],
+                           [-7.3, 3.1,22],[-7.4, -0.3,22],[-7.3, -3.7,22],
+                           [-3.6, -7.1,22],[-3.6, -3.7, 22],[-3.6, -0.3,22],[-3.6, 3.0,22],
+                           [-0.0, 3.1, 22],[-0.0, -0.3,22],[-0.1, -3.7, 22],[-0.0, -7.3,22],
+                           [3.7, -7.3,22],[7.2, -7.1, 22],[7.4, -3.7, 22],[3.6, -3.7,22],
+                           [3.6, -0.3, 22],[7.3, -0.3,22],[7.2, 3.1,22],[3.6, 3.1,22],
+                           [7.2, 6.5, 25],[7.2,6.5,27],[7.2,6.5,28]]    
+                                          
+        # self.set_points =[[0,0,22],[2,3,22],[-3,-3,22],[0,0,22],[0,0,24],[0,0,25],[0,0,27],[0,0,27.5],[0,0,28]]
+        self.drone_position = [0.0, 0.0, 0.0]                                                                                  #self.drone_postion: stores the current position of the drone
         #-----------------------------------------------------------------------------------------------------------------------
-        self.drone_position = [0.0, 0.0, 0.0]                                                                                   #self.drone_postion: stores the current position of the drone
         self.error      = [0.0, 0.0, 0.0]                                                                                       #self.error        : list, of error for roll, pitch and throttle respectively  
         self.prev_error = [0.0, 0.0, 0.0]                                                                                       #self.prev_error   : list to store the previous errors
         self.error_diff = [0.0, 0.0, 0.0]                                                                                       #self.error_diff   : stores the error difference as a list
         self.error_sum  = [0.0, 0.0, 0.0]                                                                                       #self.error_sum    : store the error_sum as a list
-        self.current_setpoint_index = 0
-        self.islanded = False                                                                                                   #self.islanded     : variable to store the curent state of drone landing
+        self.current_setpoint_index = 0                                                                                         #self.current_setpoint_index : Stores the index of current setpoint
         
-        #Defining the PID constants for battery level ~12.5 to  ~12.1               
+        self.islanded = False                                                                                                   #self.islanded     : variable to store the curent state of drone landing
+        self.contours = []                                                                                                      #self.contours: stores the number of contours        
+        self.alien = Biolocation()                                                                                              #self.alien: making an object of Biolocation()
+        self.alien.organism_type = ''                                                                                           #self.organism_type: stores the organism type
+        self.alien.whycon_x = self.drone_position[0]                                                                            # whycon_x, stores the current x coordinate of the drone
+        self.alien.whycon_y = self.drone_position[1]                                                                            # whycon_y, stores the current y coordinate of the drone
+        self.alien.whycon_z = self.drone_position[2]                                                                            # whycon_z, stores the current z coordinate of the drone
+        self.dividing_factor = 500                                                                                              #self.dividing_factor : Stores the dividing factor used for normalizing the organism centroid and frame centroid
+        self.frame_centroids = [325,350]                                                                                        #self.frame_centroid: centroid of the camera frame
+        self.min_centroid_error = -0.1                                                                                          #stores the min value of the error, required to publish the coordinates
+        self.max_centroid_error = 0.1                                                                                           #stores the max value of the error , required to publish the coordinates
+        self.organism_centroids  = [0,0]                                                                                        #self.organism_centroid: stroes the centroid of the detected cluster
+        self.isPublished = 0                                                                                                    #self.isPpublished: checks whether message is published or not
+        
+        self.rc_message.rc_pitch = 0                                                                                            #self.rc_message.rc_pitch: stores the value pitch 
+        self.rc_message.rc_roll = 0                                                                                             #self.rc_message.rc_roll: store the value of roll
+        self.rc_message.rc_throttle = 0                                                                                         #self.rc_message.rc_throttle: stores the value of the throttle                
         #values for the PID----------------------------------------------------------------------------------------------------
-        self.Kp = [ 4.39, 4.9 ,4.53]                                                                                            #self.kp: stores the Kp values for all three axis - [roll,pitch,throttle]
-        self.Ki = [ 0.004, 0.004, 0.00885]                                                                                      #self.ki: stores the Ki values for all three axis - [roll,pitch,thorttle]   
-        self.Kd = [80.1, 110.1, 117.8]                                                                                          #self.kd: stores the kd values for all three axis - [roll,pitch,throttle]                   
+        self.Kp = [5.58, 5.80 ,3.80]                                                                                            #self.kp: stores the Kp values for all three axis - [roll,pitch,throttle]
+        self.Ki = [0.051, 0.0318, 0.080]                                                                                       #self.ki: stores the Ki values for all three axis - [roll,pitch,thorttle]   
+        self.Kd = [180.1, 180.1, 150.8]                                                                                         #self.kd: stores the kd values for all three axis - [roll,pitch,throttle]                   
         #----------------------------------------------------------------------------------------------------------------------
 
         #subscriber for WhyCon--------------------------------------------------------------------------------------        
-        self.whycon_sub = node.create_subscription(PoseArray,"/whycon/poses",self.whycon_poses_callback,1)                      #self.pid__whycon_sub: subscriber for the whycon poses
+        self.whycon_sub = node.create_subscription(PoseArray,"/whycon/poses",self.whycon_poses_callback,10)                      #self.pid__whycon_sub: subscriber for the whycon poses
         #subscriber for pid_roll------------------------------------------------------------------------------------
         self.pid_roll   = node.create_subscription(PidTune,"/pid_tuning_roll",self.pid_tune_roll_callback,1)                    #self.pid_roll   : subscriber for roll axis
         #subscriber for pid_pitch-----------------------------------------------------------------------------------
         self.pid_pitch  = node.create_subscription(PidTune,"/pid_tuning_pitch",self.pid_tune_pitch_callback,1)                  #self.pid_pitch  : subscriber for pitch axis
         #subscriber for pid_alt-------------------------------------------------------------------------------------
         self.pid_alt    = node.create_subscription(PidTune,"/pid_tuning_throttle",self.pid_tune_throttle_callback,1)            #self.pid_alt    : subscriber for the alt axis
-
-        #subscriber for Rpi Camera----------------------------------------------------------------------------------
-        # node = rclpy.create_node('camera_subscriber')
-        subscriber = node.create_subscription(CvBridge, "/rpi_camera/image_raw", self.image_callback)
-        # rclpy.spin(node)
-
+        #subscribing to /video_frames-------------------------------------------------------------------------------
+        self.alien_subscriber = node.create_subscription(Image,"/video_frames", self.image_callback,20)
         #Publisher for publishing errors for plotting in plotjuggler------------------------------------------------        
         self.pid_error_pub = node.create_publisher(PIDError, "/luminosity_drone/pid_error",1)                                   #self.pid_error_pub: publisher to publish pid_error    
-        self.rc_pub = node.create_publisher(RCMessage, "/swift/rc_command",1)                                                   #self.rc_pub: publisher to publish rc_command
+        self.rc_pub = node.create_publisher(RCMessage, "/swift/rc_command",10)                                                   #self.rc_pub: publisher to publish rc_command
+        #creating the publisher for publishing on /astrobiolocation-------------------------------------------------
+        self.astrobiolocation_pub = node.create_publisher(Biolocation,'/astrobiolocation',10)               
+        #publishing the rc_command at 30hz--------------------------------------------------------------------------
+        node.create_timer(0.0333, self.pid)    
 
-
-        
     def whycon_poses_callback(self, msg):
         self.last_whycon_pose_received_at = self.node.get_clock().now().seconds_nanoseconds()[0]
         self.drone_whycon_pose_array = msg
         self.drone_position[0] = msg.poses[0].position.x              
         self.drone_position[1] = msg.poses[0].position.y
-        self.drone_position[2] = msg.poses[0].position.z
-        
+        self.drone_position[2] = msg.poses[0].position.z   
  
     def pid_tune_roll_callback(self, msg):
         self.Kp[0] = msg.kp * 0.01
@@ -133,31 +143,42 @@ class DroneController():
         self.Kp[2] = msg.kp * 0.01
         self.Ki[2] = msg.ki * 0.0001
         self.Kd[2] = msg.kd * 0.1
-
+    
     def image_callback(self, img_msg):
-        
-        # cv_image = bridge.imgmsg_to_cv2(img_msg, desired_encoding="passthrough")
-        # # Process the image using OpenCV
-        # cv2.imshow("Raspberry Pi Camera", cv_image)
-        # cv2.waitKey(1)
+        """
+    Purpose:
+    -------------------------------------------
+    callback function for deploying image processing for detection of the organism on the planet
+    
+    Input Arguments:
+    -------------------------------------------
+    img_msg
+    
+    Returns:
+    -------------------------------------------
+    None
+    
+    Example Call:
+    -------------------------------------------
+    image_callback(img_msg)
+        """
         self.cv_image = self.bridge.imgmsg_to_cv2(img_msg,"passthrough")                        #converting the ros images to openc cv images
-
         grayscale_image = cv.cvtColor(self.cv_image,cv.COLOR_BGR2GRAY)                          #grayscaling the images
         blurred_image = cv.GaussianBlur(grayscale_image, (5, 5), 0)                             #blurring the images
         threshold = cv.threshold(blurred_image, 225, 255, 0)[1] 
-        self.contours = cv.findContours(threshold,cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)[-2]      
-        for c,contour in enumerate(self.contours):
-            # (frame_centre_x,frame_centre_y),radius = cv.minEnclosingCircle(contour)
-            # center = (int(frame_centre_x),int(frame_centre_y))
+        self.contours = cv.findContours(threshold,cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)[-2] 
+        for width,contour in enumerate(self.contours):
             cv.drawContours(self.cv_image,[contour],-1,(0,0,255),3)   
-            a,b,c,d = cv.boundingRect(cv.drawContours(np.zeros_like(grayscale_image),self.contours,-1,1))
-            cv.rectangle(self.cv_image,(a-4,b-4),(a+c+10,b+d+10),(0,0,255),2)                  #drawing a recatangle around the countours(organisms)
-            contour_X = (a+c/2)/100                                                            #contour_x , stores the x coordinate of the contour, (divided by 100 to get a sigle digit value)
-            contour_Y = (b+d/2)/100                                                            #contour_y , stores the y coordinate of the contour, (divided by 100 to get a sigle digit value)
-            self.organism_centroids= [contour_X,contour_Y]                                     #storing the organism centroid
-        
-
-    def orgainsm_type(self,number_of_contours):
+            x_coordinate,y_coordinate,width,height = cv.boundingRect(cv.drawContours(np.zeros_like(grayscale_image),self.contours,-1,1))
+            cv.rectangle(self.cv_image,(x_coordinate-4,y_coordinate-4),(x_coordinate+width+10,y_coordinate+height+10),(0,0,255),2)                  #drawing a recatangle around the countours(organisms)
+            contour_X = (x_coordinate+width/2)                                                                                                      #contour_x , stores the x coordinate of the contour, 
+            contour_Y = (y_coordinate+height/2)                                                                                                     #contour_y , stores the y coordinate of the contour,
+            self.organism_centroids= [contour_X,contour_Y]  
+           
+        cv.imshow("Raspberry Pi Camera", self.cv_image)
+        cv.waitKey(1)
+    
+    def organism_type(self,number_of_contours):
         """
     Purpose:
     -------------------------------------------
@@ -175,61 +196,60 @@ class DroneController():
     -------------------------------------------
     organism_type(len(num_of_contours))
         """
+        #if number of contours is 2, then the function will return "alien_a"
         if number_of_contours ==2:
-            self.alien.organism_type = "alien_a"
+            self.alien.organism_type = 'alien_a'
+        #if number of contours is 3, then the function will return "alien_b"
         elif number_of_contours == 3:
-            self.alien.organism_type = "alien_b"
-        elif number_of_contours == 4:
-            self.alien.organism_type = "alien_c"             
+            self.alien.organism_type = 'alien_b'
+        #if number of contours is 4, then the function will return "alien_c"
+        elif number_of_contours ==4:
+            self.alien.organism_type = 'alien_c'
+        #if number of contours is 5, then the function will return "alien_d"
+        elif number_of_contours == 5:
+            self.alien.organism_type = 'alien_d'
         return self.alien.organism_type
-            
 
-    
-    def drone_landing(self):
-        
-        self.error[0] = self.drone_position[0] - self.set_points[self.current_setpoint_index][0] 
-        self.error[1] = self.drone_position[1] - self.set_points[self.current_setpoint_index][1]
-        
-        self.error_sum[0] = (self.error_sum[0] + (self.error[0]))                                                         #self.error_sum[0]:sum of the errors for roll
-        self.error_sum[1] = (self.error_sum[1] + (self.error[1]))                                                         #self.error_sum[1]:sum of the errors for pitch
-        
-        if self.error_sum[0] > SUM_ERROR_ROLL_LIMIT:
-            self.error_sum[0] = SUM_ERROR_ROLL_LIMIT
-        if self.error_sum[0] < -SUM_ERROR_ROLL_LIMIT:
-            self.error_sum[0] = -SUM_ERROR_ROLL_LIMIT
-        if self.error_sum[1] > SUM_ERROR_PITCH_LIMIT:
-            self.error_sum[1] = SUM_ERROR_PITCH_LIMIT
-        if self.error_sum[1] < -SUM_ERROR_PITCH_LIMIT:
-            self.error_sum[1] = -SUM_ERROR_PITCH_LIMIT
-        
-        self.error_diff[0] = (self.error[0]-self.prev_error[0])   
-        self.error_diff[1] = (self.error[1]-self.prev_error[1])
-        
-        self.rc_message.rc_roll     = BASE_ROLL - int((self.Kp[0]*self.error[0])+(self.Kd[0]*self.error_diff[0])+(self.error_sum[0]*self.Ki[0]))		#self.rc_message_rc_roll: speed for the roll 
-        self.rc_message.rc_pitch    = BASE_PITCH + int((self.Kp[1]*self.error[1])+(self.Kd[1]*self.error_diff[1])+(self.error_sum[0]*self.Ki[0]))		#self.rc_message_rc_pitch: speed for the pitch
-        self.rc_message.rc_throttle = 1440                                                                                                              #sending constant value to the throttle
-        
-        self.prev_error[0] = self.error[0]                                                                                                              #self.prev_error[0]:storing the current error[0] as prev_error[0]
-        self.prev_error[1] = self.error[1] 
-    
-        self.publish_data_to_rpi( roll = self.rc_message.rc_roll, pitch = self.rc_message.rc_pitch, throttle = self.rc_message.rc_throttle) 
-        if -0.6<self.error[0]<0.6 and -0.6<self.error[1]<0.6 and self.drone_position[2]< 27:
-            self.disarm()
-            #setting self.islanded to True if the drone lands
-            self.islanded = True             
-
-    
     # --------------------------------------------------------------------------------PID algorithm----------------------------------------------------------------------------
-    def pid(self):          
+    def pid(self): 
+        """
+    Purpose:
+    -------------------------------------------
+    stablises the drone at a setpoint
+    
+    Input Arguments:
+    -------------------------------------------
+    None
+    
+    Returns:
+    -------------------------------------------
+    None
+    
+    Example Call:
+    -------------------------------------------
+    pid()
+        """         
         try:
-            self.error[0] = self.drone_position[0] - self.set_points[self.current_setpoint_index][0]                                                       #self.erorr[0]: calculating the error of the drone in x axis
-            self.error[1] = self.drone_position[1]-  self.set_points[self.current_setpoint_index][1]                                                       #self.erorr[1]: calculating the error of the drone in y axis
-            self.error[2] = self.drone_position[2] - self.set_points[self.current_setpoint_index][2]                                                       #self.erorr[2]: calculating the error of the drone in z axis
+            #if no contour is detected then the drone will move according to its setpoints
+            if(len(self.contours)<1):
+                self.error[0] = self.drone_position[0] - self.set_points[self.current_setpoint_index][0]                                                       #self.erorr[0]: calculating the error of the drone in x axis
+                self.error[1] = self.drone_position[1] - self.set_points[self.current_setpoint_index][1]                                                       #self.erorr[1]: calculating the error of the drone in y axis
+                self.error[2] = self.drone_position[2] - self.set_points[self.current_setpoint_index][2]                                                       #self.erorr[2]: calculating the error of the drone in z axis
+                self.isPublished = 0
+            #if a contour is detected, the drone will try to align the centroid of the camera frame to the centroid of the cluster
+            if(len(self.contours)>1):
+                self.error[0] = ((self.frame_centroids[0]/self.dividing_factor) - (self.organism_centroids[0]/self.dividing_factor))
+                self.error[1] = ((self.frame_centroids[1]/self.dividing_factor) - (self.organism_centroids[1]/self.dividing_factor))                         
+                self.error[2] = self.drone_position[2] - self.set_points[self.current_setpoint_index][2]
+            #if contour is detected and msg is published
+            if(len(self.contours)>1 and self.isPublished == 1):
+                self.error[0] = self.drone_position[0] - self.set_points[self.current_setpoint_index][0] 
+                self.error[1] = self.drone_position[1] - self.set_points[self.current_setpoint_index][1] 
+                self.error[2] = self.drone_position[2] - self.set_points[self.current_setpoint_index][2]
             #----------------error of all the cordinates(integral)---------------------------------------------------------------------------------------------
             self.error_sum[0] = (self.error_sum[0] + (self.error[0]))                                                         #self.error_sum[0]:sum of the errors for roll
             self.error_sum[1] = (self.error_sum[1] + (self.error[1]))                                                         #self.error_sum[1]:sum of the errors for pitch
             self.error_sum[2] = (self.error_sum[2] + (self.error[2]))                                                         #self.error_sum[2]:sum of the errors for throttle
-            
             #limiting the error_sum(integral)------------------------------------------------------------------------------------------------------------------       
             if self.error_sum[0] > SUM_ERROR_ROLL_LIMIT:
                 self.error_sum[0] = SUM_ERROR_ROLL_LIMIT
@@ -243,27 +263,22 @@ class DroneController():
                 self.error_sum[2] = SUM_ERROR_THROTTLE_LIMIT
             if self.error_sum[2] < -SUM_ERROR_THROTTLE_LIMIT:          
                 self.error_sum[2] = -SUM_ERROR_THROTTLE_LIMIT
-                
             #--------------------------------------------------------------------------------------------------------------------------------------------------   
             #derivative----------------------------------------------------------------------------------------------------------------------------------------            
             self.error_diff[0] = (self.error[0]-self.prev_error[0])   
             self.error_diff[1] = (self.error[1]-self.prev_error[1])
             self.error_diff[2] = (self.error[2]-self.prev_error[2])
-
             # Write the PID equations and calculate the self.rc_message.rc_throttle, self.rc_message.rc_roll, self.rc_message.rc_pitch
             self.rc_message.rc_roll     = BASE_ROLL - int((self.Kp[0]*self.error[0])+(self.Kd[0]*self.error_diff[0])+(self.error_sum[0]*self.Ki[0]))		#self.rc_message_rc_roll: speed for the roll 
-            self.rc_message.rc_pitch    = BASE_PITCH + int((self.Kp[1]*self.error[1])+(self.Kd[1]*self.error_diff[1])+(self.error_sum[0]*self.Ki[0]))		#self.rc_message_rc_pitch: speed for the pitch
-            self.rc_message.rc_throttle = BASE_THROTTLE + int((self.Kp[2]*self.error[2])+ (self.Kd[2]*self.error_diff[2])+(self.error_sum[2]*self.Ki[2]))   #self.rc_message_rc_throttle: speed for the throttle 
-            
+            self.rc_message.rc_pitch    = BASE_PITCH + int((self.Kp[1]*self.error[1])+(self.Kd[1]*self.error_diff[1])+(self.error_sum[1]*self.Ki[1]))		#self.rc_message_rc_pitch: speed for the pitch
+            self.rc_message.rc_throttle = BASE_THROTTLE + int((self.Kp[2]*self.error[2])+(self.Kd[2]*self.error_diff[2])+(self.error_sum[2]*self.Ki[2]))   #self.rc_message_rc_throttle: speed for the throttle 
             #setting prev_error to the current_error-----------------------------------------------------------------------------------------------------------
             self.prev_error[0] = self.error[0]                                                                                                              #self.prev_error[0]:storing the current error[0] as prev_error[0]
             self.prev_error[1] = self.error[1]                                                                                                              #self.prev_error[1]:storing the current error[1] as prev_error[1]
             self.prev_error[2] = self.error[2]                                                                                                              #self.prev_error[2]:storing the current error[2] as prev_error[2]
-
-        #calling the function self.publish_data_to_rpi---------------------------------------------------------------------------------------------------------
-            self.publish_data_to_rpi( roll = self.rc_message.rc_roll, pitch = self.rc_message.rc_pitch, throttle = self.rc_message.rc_throttle)  
-                        
-        #publishing data to plotjuggler------------------------------------------------------------------------------------------------------------------------                  
+            #calling the function self.publish_data_to_rpi---------------------------------------------------------------------------------------------------------
+            self.publish_data_to_rpi( roll = self.rc_message.rc_roll, pitch = self.rc_message.rc_pitch, throttle = self.rc_message.rc_throttle)                         
+            #publishing data to plotjuggler------------------------------------------------------------------------------------------------------------------------                  
             self.pid_error_pub.publish(
             PIDError(
                     roll_error=float(self.error[0]),
@@ -273,22 +288,36 @@ class DroneController():
                     zero_error=0.0,
                     )
                 )
-            if self.current_setpoint_index < (len(self.set_points)-1):
-                if -0.8<self.error[0]<0.8 and -0.8<self.error[1]<0.8 and -0.8<self.error[2]<0.8:
-                    # print(f"setpoint {self.set_points[self.current_setpoint_index]} is achieved")
-                    self.current_setpoint_index += 1
-                
+            if (self.current_setpoint_index < (len(self.set_points)-1) and len(self.contours)<1):
+                if -0.6<self.error[0]<0.6 and -0.6<self.error[1]<0.6 and -0.6<self.error[2]<0.6:
+                    print(f"setpoint {self.set_points[self.current_setpoint_index]} is achieved")
+                    self.current_setpoint_index += 1          
+            
+            if((self.min_centroid_error< self.error[0]<self.max_centroid_error) and (self.min_centroid_error< self.error[1]< self.max_centroid_error) and len(self.contours)> 0 and self.isPublished == 0):
+                self.alien.organism_type = self.organism_type(len(self.contours))
+                self.alien.whycon_x = self.drone_position[0]
+                self.alien.whycon_y = self.drone_position[1]
+                self.alien.whycon_z = self.drone_position[2]
+                self.astrobiolocation_pub.publish(self.alien)
+                self.isPublished = 1
+                self.current_setpoint_index += 1    
+                print("cute alien detected")   
+                    
+            #if the drone reaches the last setpoint, then the drone will disarm-----------------
+            if((len(self.set_points)-1) == self.current_setpoint_index):
+                self.islanded = True
+                self.disarm()
+
         except Exception as e:
             print(e)
+
 #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
     def publish_data_to_rpi(self, roll, pitch, throttle):
         self.rc_message.rc_throttle = int(throttle)                                                                           #self.rc_message.rc_throttle: storing the integer value of the throttle
         self.rc_message.rc_roll     = int(roll)                                                                               #self.rc_message.rc_roll    : storing the integer value of the roll
         self.rc_message.rc_pitch    = int(pitch)                                                                              #self.rc_message.rc_pitch   : storing the integer value of the pitch       
         self.rc_message.rc_yaw      = int(1500)                                                                               #self.rc_message.rc_yaw     : storing the constant value to yaw
-
+        
         #-------------------------------------------------------- BUTTERWORTH FILTER-------------------------------------------------------------------------
         span = 15
         for index, val in enumerate([self.rc_message.rc_roll, self.rc_message.rc_pitch, self.rc_message.rc_throttle]):
@@ -327,14 +356,12 @@ class DroneController():
         elif self.rc_message.rc_throttle < MIN_THROTTLE:
             self.rc_message.rc_throttle = MIN_THROTTLE
         #---------------------------------------------------------------------------------------------------------------------------------------------------
-
 #-------------------------------------------------publishing data to rpi------------------------------------------------------------------------------------
-   
         self.rc_pub.publish(self.rc_message)
-        
+               
     # This function will be called as soon as this rosnode is terminated. So we disarm the drone as soon as we press CTRL + C. 
     # If anything goes wrong with the drone, immediately press CTRL + C so that the drone disamrs and motors stop 
-
+    
     def shutdown_hook(self):
         self.node.get_logger().info("Calling shutdown hook")
         self.disarm()
@@ -351,34 +378,25 @@ class DroneController():
         self.commandbool.value = False
         self.future = self.arming_service_client.call_async(self.commandbool)
 
-
 def main(args=None):
     rclpy.init(args=args)
 
     node = rclpy.create_node('controller')
     node.get_logger().info(f"Node Started")
     node.get_logger().info("Entering PID controller loop")
-
     controller = DroneController(node)
     controller.arm()
     node.get_logger().info("Armed")
     
-    try:
-                   
+    try:           
         while rclpy.ok():
-            #if the setpoint is set to the last set_point, then the drone landing function will run
-            if controller.current_setpoint_index == (len(controller.set_points)-1) and controller.islanded == False:
-                #calling the drone_landing  function------------
-                controller.drone_landing()
-            else:
+            if controller.islanded == False:
                 controller.pid()
-                
             if node.get_clock().now().to_msg().sec - controller.last_whycon_pose_received_at > 1:
                 node.get_logger().error("Unable to detect WHYCON poses")           
-            rclpy.spin_once(node)
-
-        
-
+            rclpy.spin(node)
+            
+            
     except Exception as err:
         print(err)
 
@@ -386,8 +404,6 @@ def main(args=None):
         controller.shutdown_hook()
         node.destroy_node()
         rclpy.shutdown()
-
-
 
 if __name__ == '__main__':
     #calling the main function

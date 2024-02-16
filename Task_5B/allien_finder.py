@@ -37,7 +37,7 @@ MIN_ROLL = 1400
 BASE_ROLL = 1487
 # BASE_ROLL = [1488,0,0]
 MAX_ROLL = 1600
-SUM_ERROR_ROLL_LIMIT =100
+SUM_ERROR_ROLL_LIMIT = 100
 
 #gloabal vaiables for pitch---------------------------------------------------------------------------------------------
 MIN_PITCH = 1400 
@@ -50,11 +50,11 @@ SUM_ERROR_PITCH_LIMIT = 100
 MIN_THROTTLE = 1400
 BASE_THROTTLE = 1453
 # BASE_THROTTLE = [1453,0,0]
-MAX_THROTTLE= 1550
+MAX_THROTTLE = 1550
 SUM_ERROR_THROTTLE_LIMIT = 80000
 
 #gloabal variable for yaw-----------------------------------------------------------------------------------------------
-MIN_YAW= 1000
+MIN_YAW = 1000
 BASE_YAW = 1500
 MAX_YAW = 2000
 SUM_ERROR_ROLL_LIMIT = 400
@@ -100,16 +100,14 @@ class DroneController():
         #subscriber for pid_alt-------------------------------------------------------------------------------------
         self.pid_alt    = node.create_subscription(PidTune,"/pid_tuning_throttle",self.pid_tune_throttle_callback,1)            #self.pid_alt    : subscriber for the alt axis
 
-        #subscriber for Rpi ---------
+        #subscriber for Rpi camera----------------------------------------------------------------------------------------
         self.alien_finder = node.create_subscription(Image, "/video_frames", self.image_callback,10)
-        
-
+    
         #Publisher for publishing errors for plotting in plotjuggler------------------------------------------------        
         self.pid_error_pub = node.create_publisher(PIDError, "/luminosity_drone/pid_error",1)                                   #self.pid_error_pub: publisher to publish pid_error    
         self.rc_pub = node.create_publisher(RCMessage, "/swift/rc_command",1)                                                   #self.rc_pub: publisher to publish rc_command
 
 
-        
     def whycon_poses_callback(self, msg):
         self.last_whycon_pose_received_at = self.node.get_clock().now().seconds_nanoseconds()[0]
         self.drone_whycon_pose_array = msg
@@ -117,7 +115,6 @@ class DroneController():
         self.drone_position[1] = msg.poses[0].position.y
         self.drone_position[2] = msg.poses[0].position.z
         
- 
     def pid_tune_roll_callback(self, msg):
         self.Kp[0] = msg.kp * 0.01
         self.Ki[0] = msg.ki * 0.0001
@@ -155,7 +152,6 @@ class DroneController():
             contour_Y = (b+d/2)/100                                                            #contour_y , stores the y coordinate of the contour, (divided by 100 to get a sigle digit value)
             self.organism_centroids= [contour_X,contour_Y]                                     #storing the organism centroid
         
-
     def orgainsm_type(self,number_of_contours):
         """
     Purpose:
@@ -176,14 +172,13 @@ class DroneController():
         """
         if number_of_contours ==2:
             self.alien.organism_type = "alien_a"
+            self.publish_data_to_rpi()
         elif number_of_contours == 3:
             self.alien.organism_type = "alien_b"
         elif number_of_contours == 4:
             self.alien.organism_type = "alien_c"             
         return self.alien.organism_type
             
-
-    
     def drone_landing(self):
         
         self.error[0] = self.drone_position[0] - self.set_points[self.current_setpoint_index][0] 
@@ -281,12 +276,15 @@ class DroneController():
             print(e)
 #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-
-    def publish_data_to_rpi(self, roll, pitch, throttle):
+    def publish_data_to_rpi(self, roll, pitch, throttle,aux3,):
         self.rc_message.rc_throttle = int(throttle)                                                                           #self.rc_message.rc_throttle: storing the integer value of the throttle
         self.rc_message.rc_roll     = int(roll)                                                                               #self.rc_message.rc_roll    : storing the integer value of the roll
         self.rc_message.rc_pitch    = int(pitch)                                                                              #self.rc_message.rc_pitch   : storing the integer value of the pitch       
         self.rc_message.rc_yaw      = int(1500)                                                                               #self.rc_message.rc_yaw     : storing the constant value to yaw
+
+        self.rc_message.aux3 = int(2000)
+        self.rc_message.aux4 = int(2000)
+
 
         #-------------------------------------------------------- BUTTERWORTH FILTER-------------------------------------------------------------------------
         span = 15
@@ -385,7 +383,6 @@ def main(args=None):
         controller.shutdown_hook()
         node.destroy_node()
         rclpy.shutdown()
-
 
 
 if __name__ == '__main__':

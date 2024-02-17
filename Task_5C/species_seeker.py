@@ -59,8 +59,7 @@ DRONE_WHYCON_POSE = [[], [], []]
 class DroneController(Node):
     def __init__(self,node):
         self.node= node        
-        my_mutual_group_1 = MutuallyExclusiveCallbackGroup()
-        my_reentrant_group = ReentrantCallbackGroup() 
+        my_mutual_group_1 = MutuallyExclusiveCallbackGroup() 
         my_mutual_group_2 = MutuallyExclusiveCallbackGroup()
         
         self.rc_message = RCMessage()                                                                                           #self.rc_message                   : object of the the RCMessage class
@@ -101,6 +100,10 @@ class DroneController(Node):
         self.organism_centroids  = [0,0]                                                                                        #self.organism_centroid: stroes the centroid of the detected cluster
         self.isPublished = 0                                                                                                    #self.isPpublished: checks whether message is published or not
         
+        self.times_switched = 0
+        self.i = 0
+        self.num_of_times_to_beep = 0
+        self.buzzer_has_beeped = 0
         self.rc_message.rc_pitch = 0                                                                                            #self.rc_message.rc_pitch: stores the value pitch 
         self.rc_message.rc_roll = 0                                                                                             #self.rc_message.rc_roll: store the value of roll
         self.rc_message.rc_throttle = 0                                                                                         #self.rc_message.rc_throttle: stores the value of the throttle                
@@ -129,7 +132,29 @@ class DroneController(Node):
         self.astrobiolocation_pub = node.create_publisher(Biolocation,'/astrobiolocation',1)               
         #publishing the rc_command at 30hz--------------------------------------------------------------------------
         node.create_timer(0.0333, self.pid,callback_group = my_mutual_group_1)    
-
+        node.create_timer(0.2,self.buzzer_and_led,callback_group = my_mutual_group_2)
+    
+    def buzzer_and_led(self):
+        if self.isPublished == 1 and self.times_switched <= self.num_of_times_to_beep: 
+            if self.i%2 == 0:
+                self.rc_message.aux3 = 2000
+                self.rc_message.aux4 = 1500    
+                self.i = self.i + 1
+                
+            else:
+                self.rc_message.aux3 = 1000
+                self.rc_message.aux4 = 2000
+                self.i = self.i + 1
+                self.times_switched += 1
+            
+            if self.times_switched == self.num_of_times_to_beep:
+                self.current_setpoint_index += 1
+                self.isPublished = 0
+                self.times_switched = 0
+                self.i = 0
+                
+        # print(self.i,self.times_switched,self.current_setpoint_index,self.num_of_times_to_beep)
+                
     def whycon_poses_callback(self, msg):
         self.last_whycon_pose_received_at = self.node.get_clock().now().seconds_nanoseconds()[0]
         self.drone_whycon_pose_array = msg
@@ -191,8 +216,8 @@ class DroneController(Node):
             contour_Y = (y_coordinate+height/2)                                                                                                     #contour_y , stores the y coordinate of the contour,
             self.organism_centroids= [contour_X,contour_Y]  
             
-        # cv.imshow("Raspberry Pi Camera", self.resized)
-        # cv.waitKey(1)
+        cv.imshow("Raspberry Pi Camera", self.resized)
+        cv.waitKey(1)
     
     def organism_type(self,number_of_contours):
         """
@@ -251,7 +276,7 @@ class DroneController(Node):
                 self.error[0] = self.drone_position[0] - self.set_points[self.current_setpoint_index][0]                                                       #self.erorr[0]: calculating the error of the drone in x axis
                 self.error[1] = self.drone_position[1] - self.set_points[self.current_setpoint_index][1]                                                       #self.erorr[1]: calculating the error of the drone in y axis
                 self.error[2] = self.drone_position[2] - self.set_points[self.current_setpoint_index][2]                                                       #self.erorr[2]: calculating the error of the drone in z axis
-                self.isPublished = 0
+                # self.isPublished = 0
             #if a contour is detected, the drone will try to align the centroid of the camera frame to the centroid of the cluster
             if(len(self.contours)>1):
                 self.error[0] = ((self.frame_centroids[0]/self.dividing_factor) - (self.organism_centroids[0]/self.dividing_factor))
@@ -293,7 +318,6 @@ class DroneController(Node):
             self.prev_error[1] = self.error[1]                                                                                                              #self.prev_error[1]:storing the current error[1] as prev_error[1]
             self.prev_error[2] = self.error[2]                                                                                                              #self.prev_error[2]:storing the current error[2] as prev_error[2]
             #calling the function self.publish_data_to_rpi---------------------------------------------------------------------------------------------------------
-            self.publish_data_to_rpi( roll = self.rc_message.rc_roll, pitch = self.rc_message.rc_pitch, throttle = self.rc_message.rc_throttle)                         
             #publishing data to plotjuggler------------------------------------------------------------------------------------------------------------------------                  
             self.pid_error_pub.publish(
             PIDError(
@@ -319,15 +343,18 @@ class DroneController(Node):
                 #updating the variable isPublished if /astrobiolocation is published----------------
                 self.isPublished = 1
                 #updating the setpoint if /astrobiolocation is published----------------------------
-                self.current_setpoint_index += 1 
+                self.num_of_times_to_beep = len(self.contours)
                 #printing if alien is detected------------------------------------------------------
                 print("cute alien detected")   
                     
+            self.publish_data_to_rpi( roll = self.rc_message.rc_roll, pitch = self.rc_message.rc_pitch, throttle = self.rc_message.rc_throttle)                         
             #if the drone reaches the last setpoint, then the drone will disarm-----------------
             if((len(self.set_points)-1) == self.current_setpoint_index):
                 self.islanded = True
                 self.disarm()
-
+        
+        
+            
         except Exception as e:
             print(e)
 
@@ -413,6 +440,7 @@ def main(args=None):
         while rclpy.ok():
             if controller.islanded == False:
                 controller.pid()
+                controller.buzzer_and_led()
             if node.get_clock().now().to_msg().sec - controller.last_whycon_pose_received_at > 1:
                 node.get_logger().error("Unable to detect WHYCON poses")           
             executor.spin()

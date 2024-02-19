@@ -29,7 +29,7 @@ drone, drone designed and equipped to detect aliens with their determination and
 
 Journey - 3
 -------------------------------------------------------------------------------------------------------------------------------------------------------
-Khoju has deployed to the arena and started its mission and successfully deteced new species, named - cute aliens.
+Khoju has deployed to the arena and started its mission and successfully deteced new species, named - Besan ke ladoo[BKL] aliens.
 
 -----------------------------------Journey Continue----------------------------------------------------------------------------------------------------
 
